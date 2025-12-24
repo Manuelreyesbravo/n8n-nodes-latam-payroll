@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-latam-payroll",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Nodo n8n para cálculos laborales LATAM - Vacaciones, Aguinaldo, Finiquito, Descuentos legales",
   "keywords": [
     "n8n-community-node-package",
