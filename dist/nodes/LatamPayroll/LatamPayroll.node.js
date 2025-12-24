@@ -20,6 +20,29 @@ function chileCalcularSueldoLiquido(bruto, afpPct = 10.77, saludPct = 7, cesanti
         sueldoLiquido: liquido,
     };
 }
+function chileCalcularBrutoDesdeLiquido(liquidoDeseado, afpPct = 10.77, saludPct = 7, cesantiaPct = 0.6) {
+    // Fórmula inversa: Bruto = Líquido / (1 - totalDescuentos%)
+    const totalDescuentosPct = (afpPct + saludPct + cesantiaPct) / 100;
+    const bruto = Math.round(liquidoDeseado / (1 - totalDescuentosPct));
+    const afp = Math.round(bruto * afpPct / 100);
+    const salud = Math.round(bruto * saludPct / 100);
+    const cesantia = Math.round(bruto * cesantiaPct / 100);
+    const totalDescuentos = afp + salud + cesantia;
+    const liquidoReal = bruto - totalDescuentos;
+    return {
+        pais: 'Chile',
+        liquidoDeseado,
+        sueldoBrutoNecesario: bruto,
+        descuentos: {
+            afp: { porcentaje: afpPct, monto: afp },
+            salud: { porcentaje: saludPct, monto: salud },
+            cesantia: { porcentaje: cesantiaPct, monto: cesantia },
+            total: totalDescuentos,
+        },
+        liquidoResultante: liquidoReal,
+        costoEmpresa: bruto,
+    };
+}
 function chileCalcularVacaciones(sueldoBruto, diasPendientes) {
     const sueldoDiario = sueldoBruto / 30;
     const montoVacaciones = Math.round(sueldoDiario * diasPendientes);
@@ -78,6 +101,25 @@ function mexicoCalcularSueldoLiquido(bruto, imss = 2.775) {
             total: totalDescuentos,
         },
         sueldoLiquido: liquido,
+    };
+}
+function mexicoCalcularBrutoDesdeLiquido(liquidoDeseado, imss = 2.775) {
+    // Aproximación iterativa por la complejidad del ISR
+    let bruto = liquidoDeseado * 1.15; // Estimación inicial
+    for (let i = 0; i < 10; i++) {
+        const resultado = mexicoCalcularSueldoLiquido(bruto, imss);
+        const diferencia = liquidoDeseado - resultado.sueldoLiquido;
+        bruto = bruto + diferencia;
+    }
+    bruto = Math.round(bruto);
+    const final = mexicoCalcularSueldoLiquido(bruto, imss);
+    return {
+        pais: 'México',
+        liquidoDeseado,
+        sueldoBrutoNecesario: bruto,
+        descuentos: final.descuentos,
+        liquidoResultante: final.sueldoLiquido,
+        costoEmpresa: bruto,
     };
 }
 function mexicoCalcularVacaciones(sueldoMensual, anosAntiguedad) {
@@ -177,6 +219,28 @@ function argentinaCalcularSueldoLiquido(bruto) {
         sueldoLiquido: liquido,
     };
 }
+function argentinaCalcularBrutoDesdeLiquido(liquidoDeseado) {
+    // Descuentos fijos: 11% + 3% + 3% = 17%
+    const bruto = Math.round(liquidoDeseado / (1 - 0.17));
+    const jubilacion = Math.round(bruto * 11 / 100);
+    const obraSocial = Math.round(bruto * 3 / 100);
+    const ley19032 = Math.round(bruto * 3 / 100);
+    const totalDescuentos = jubilacion + obraSocial + ley19032;
+    const liquidoReal = bruto - totalDescuentos;
+    return {
+        pais: 'Argentina',
+        liquidoDeseado,
+        sueldoBrutoNecesario: bruto,
+        descuentos: {
+            jubilacion: { porcentaje: 11, monto: jubilacion },
+            obraSocial: { porcentaje: 3, monto: obraSocial },
+            ley19032Pami: { porcentaje: 3, monto: ley19032 },
+            total: totalDescuentos,
+        },
+        liquidoResultante: liquidoReal,
+        costoEmpresa: bruto,
+    };
+}
 function argentinaCalcularVacaciones(sueldoBruto, anosAntiguedad) {
     let diasVacaciones = 14;
     if (anosAntiguedad >= 5)
@@ -245,6 +309,27 @@ function colombiaCalcularSueldoLiquido(bruto) {
         nota: 'Empleador aporta adicional 12% pensión y 8.5% salud',
     };
 }
+function colombiaCalcularBrutoDesdeLiquido(liquidoDeseado) {
+    // Descuentos fijos: 4% + 4% = 8%
+    const bruto = Math.round(liquidoDeseado / (1 - 0.08));
+    const pension = Math.round(bruto * 4 / 100);
+    const salud = Math.round(bruto * 4 / 100);
+    const totalDescuentos = pension + salud;
+    const liquidoReal = bruto - totalDescuentos;
+    return {
+        pais: 'Colombia',
+        liquidoDeseado,
+        sueldoBrutoNecesario: bruto,
+        descuentos: {
+            pension: { porcentaje: 4, monto: pension },
+            salud: { porcentaje: 4, monto: salud },
+            total: totalDescuentos,
+        },
+        liquidoResultante: liquidoReal,
+        costoEmpresa: bruto,
+        nota: 'Costo empresa total = Bruto + 12% pensión + 8.5% salud + parafiscales',
+    };
+}
 function colombiaCalcularPrima(sueldoMensual, mesesTrabajados = 6) {
     const primaCompleta = sueldoMensual / 2;
     const primaProporcional = Math.round(primaCompleta * mesesTrabajados / 6);
@@ -310,6 +395,30 @@ function peruCalcularSueldoLiquido(bruto, afpPct = 10) {
         },
         sueldoLiquido: liquido,
         nota: 'EsSalud (9%) lo paga el empleador',
+    };
+}
+function peruCalcularBrutoDesdeLiquido(liquidoDeseado, afpPct = 10) {
+    // Descuentos: AFP + comisión 1.69% + seguro 1.36%
+    const totalPct = (afpPct + 1.69 + 1.36) / 100;
+    const bruto = Math.round(liquidoDeseado / (1 - totalPct));
+    const afp = Math.round(bruto * afpPct / 100);
+    const comisionAfp = Math.round(bruto * 1.69 / 100);
+    const seguroAfp = Math.round(bruto * 1.36 / 100);
+    const totalDescuentos = afp + comisionAfp + seguroAfp;
+    const liquidoReal = bruto - totalDescuentos;
+    return {
+        pais: 'Perú',
+        liquidoDeseado,
+        sueldoBrutoNecesario: bruto,
+        descuentos: {
+            afp: { porcentaje: afpPct, monto: afp },
+            comisionAfp: { porcentaje: 1.69, monto: comisionAfp },
+            seguroAfp: { porcentaje: 1.36, monto: seguroAfp },
+            total: totalDescuentos,
+        },
+        liquidoResultante: liquidoReal,
+        costoEmpresa: Math.round(bruto * 1.09), // +9% EsSalud
+        nota: 'Costo empresa incluye 9% EsSalud',
     };
 }
 function peruCalcularGratificacion(sueldoMensual, mesesTrabajados = 6) {
@@ -398,6 +507,26 @@ function brasilCalcularSueldoLiquido(bruto) {
         salarioLiquido: liquido,
     };
 }
+function brasilCalcularBrutoDesdeLiquido(liquidoDeseado) {
+    // Aproximación iterativa por la complejidad de INSS e IRRF progresivos
+    let bruto = liquidoDeseado * 1.25; // Estimación inicial
+    for (let i = 0; i < 10; i++) {
+        const resultado = brasilCalcularSueldoLiquido(bruto);
+        const diferencia = liquidoDeseado - resultado.salarioLiquido;
+        bruto = bruto + diferencia;
+    }
+    bruto = Math.round(bruto);
+    const final = brasilCalcularSueldoLiquido(bruto);
+    return {
+        pais: 'Brasil',
+        liquidoDesejado: liquidoDeseado,
+        salarioBrutoNecessario: bruto,
+        descontos: final.descontos,
+        liquidoResultante: final.salarioLiquido,
+        custoEmpresa: Math.round(bruto * 1.08), // +8% FGTS aprox
+        nota: 'Custo empresa inclui ~8% FGTS',
+    };
+}
 function brasilCalcularFerias(salarioMensual, diasFerias = 30) {
     const salarioDiario = salarioMensual / 30;
     const feriasBruto = Math.round(salarioDiario * diasFerias);
@@ -459,6 +588,24 @@ function ecuadorCalcularSueldoLiquido(bruto) {
         },
         sueldoLiquido: liquido,
         nota: 'Empleador aporta 11.15% adicional',
+    };
+}
+function ecuadorCalcularBrutoDesdeLiquido(liquidoDeseado) {
+    // Descuento IESS: 9.45%
+    const bruto = Math.round(liquidoDeseado / (1 - 0.0945));
+    const iess = Math.round(bruto * 9.45 / 100);
+    const liquidoReal = bruto - iess;
+    return {
+        pais: 'Ecuador',
+        liquidoDeseado,
+        sueldoBrutoNecesario: bruto,
+        descuentos: {
+            iess: { porcentaje: 9.45, monto: iess },
+            total: iess,
+        },
+        liquidoResultante: liquidoReal,
+        costoEmpresa: Math.round(bruto * 1.1115), // +11.15% IESS patronal
+        nota: 'Costo empresa incluye 11.15% IESS patronal',
     };
 }
 function ecuadorCalcularDecimoTercero(sueldoMensual, mesesTrabajados = 12) {
@@ -528,6 +675,32 @@ function espanaCalcularSueldoLiquido(bruto, irpfPct = 15) {
             total: totalDescuentos,
         },
         sueldoLiquido: liquido,
+    };
+}
+function espanaCalcularBrutoDesdeLiquido(liquidoDeseado, irpfPct = 15) {
+    // Descuentos: SS 6.35% + Desempleo 1.55% + Formación 0.10% + IRPF variable
+    const totalPct = (6.35 + 1.55 + 0.10 + irpfPct) / 100;
+    const bruto = Math.round(liquidoDeseado / (1 - totalPct));
+    const ss = Math.round(bruto * 6.35 / 100);
+    const desempleo = Math.round(bruto * 1.55 / 100);
+    const formacion = Math.round(bruto * 0.10 / 100);
+    const irpf = Math.round(bruto * irpfPct / 100);
+    const totalDescuentos = ss + desempleo + formacion + irpf;
+    const liquidoReal = bruto - totalDescuentos;
+    return {
+        pais: 'España',
+        liquidoDeseado,
+        sueldoBrutoNecesario: bruto,
+        descuentos: {
+            seguridadSocial: { porcentaje: 6.35, monto: ss },
+            desempleo: { porcentaje: 1.55, monto: desempleo },
+            formacion: { porcentaje: 0.10, monto: formacion },
+            irpf: { porcentaje: irpfPct, monto: irpf },
+            total: totalDescuentos,
+        },
+        liquidoResultante: liquidoReal,
+        costoEmpresa: Math.round(bruto * 1.30), // ~30% cargas sociales empresa
+        nota: 'Costo empresa incluye ~30% Seguridad Social empresa',
     };
 }
 function espanaCalcularVacaciones(sueldoAnual, diasPendientes) {
@@ -621,11 +794,12 @@ class LatamPayroll {
                     noDataExpression: true,
                     displayOptions: { show: { pais: ['chile'] } },
                     options: [
+                        { name: 'Bruto desde Líquido', value: 'bruto_liquido', action: 'Calcular bruto desde liquido' },
                         { name: 'Sueldo Líquido', value: 'sueldo_liquido', action: 'Calcular sueldo liquido' },
                         { name: 'Vacaciones', value: 'vacaciones', action: 'Calcular vacaciones' },
                         { name: 'Finiquito', value: 'finiquito', action: 'Calcular finiquito' },
                     ],
-                    default: 'sueldo_liquido',
+                    default: 'bruto_liquido',
                 },
                 // ===== MEXICO =====
                 {
@@ -635,12 +809,13 @@ class LatamPayroll {
                     noDataExpression: true,
                     displayOptions: { show: { pais: ['mexico'] } },
                     options: [
+                        { name: 'Bruto desde Líquido', value: 'bruto_liquido', action: 'Calcular bruto desde liquido' },
                         { name: 'Sueldo Líquido', value: 'sueldo_liquido', action: 'Calcular sueldo liquido' },
                         { name: 'Vacaciones', value: 'vacaciones', action: 'Calcular vacaciones' },
                         { name: 'Aguinaldo', value: 'aguinaldo', action: 'Calcular aguinaldo' },
                         { name: 'Finiquito', value: 'finiquito', action: 'Calcular finiquito' },
                     ],
-                    default: 'sueldo_liquido',
+                    default: 'bruto_liquido',
                 },
                 // ===== ARGENTINA =====
                 {
@@ -650,12 +825,13 @@ class LatamPayroll {
                     noDataExpression: true,
                     displayOptions: { show: { pais: ['argentina'] } },
                     options: [
+                        { name: 'Bruto desde Líquido', value: 'bruto_liquido', action: 'Calcular bruto desde liquido' },
                         { name: 'Sueldo Líquido', value: 'sueldo_liquido', action: 'Calcular sueldo liquido' },
                         { name: 'Vacaciones', value: 'vacaciones', action: 'Calcular vacaciones' },
                         { name: 'SAC (Aguinaldo)', value: 'sac', action: 'Calcular SAC' },
                         { name: 'Indemnización', value: 'indemnizacion', action: 'Calcular indemnizacion' },
                     ],
-                    default: 'sueldo_liquido',
+                    default: 'bruto_liquido',
                 },
                 // ===== COLOMBIA =====
                 {
@@ -665,12 +841,13 @@ class LatamPayroll {
                     noDataExpression: true,
                     displayOptions: { show: { pais: ['colombia'] } },
                     options: [
+                        { name: 'Bruto desde Líquido', value: 'bruto_liquido', action: 'Calcular bruto desde liquido' },
                         { name: 'Sueldo Líquido', value: 'sueldo_liquido', action: 'Calcular sueldo liquido' },
                         { name: 'Prima de Servicios', value: 'prima', action: 'Calcular prima' },
                         { name: 'Cesantías', value: 'cesantias', action: 'Calcular cesantias' },
                         { name: 'Liquidación', value: 'liquidacion', action: 'Calcular liquidacion' },
                     ],
-                    default: 'sueldo_liquido',
+                    default: 'bruto_liquido',
                 },
                 // ===== PERU =====
                 {
@@ -680,12 +857,13 @@ class LatamPayroll {
                     noDataExpression: true,
                     displayOptions: { show: { pais: ['peru'] } },
                     options: [
+                        { name: 'Bruto desde Líquido', value: 'bruto_liquido', action: 'Calcular bruto desde liquido' },
                         { name: 'Sueldo Líquido', value: 'sueldo_liquido', action: 'Calcular sueldo liquido' },
                         { name: 'Gratificación', value: 'gratificacion', action: 'Calcular gratificacion' },
                         { name: 'CTS', value: 'cts', action: 'Calcular CTS' },
                         { name: 'Liquidación', value: 'liquidacion', action: 'Calcular liquidacion' },
                     ],
-                    default: 'sueldo_liquido',
+                    default: 'bruto_liquido',
                 },
                 // ===== BRASIL =====
                 {
@@ -695,12 +873,13 @@ class LatamPayroll {
                     noDataExpression: true,
                     displayOptions: { show: { pais: ['brasil'] } },
                     options: [
+                        { name: 'Bruto desde Líquido', value: 'bruto_liquido', action: 'Calcular bruto desde liquido' },
                         { name: 'Salário Líquido', value: 'sueldo_liquido', action: 'Calcular salario liquido' },
                         { name: 'Férias', value: 'ferias', action: 'Calcular ferias' },
                         { name: '13° Salário', value: 'decimo_tercero', action: 'Calcular decimo terceiro' },
                         { name: 'Rescisão', value: 'rescisao', action: 'Calcular rescisao' },
                     ],
-                    default: 'sueldo_liquido',
+                    default: 'bruto_liquido',
                 },
                 // ===== ECUADOR =====
                 {
@@ -710,12 +889,13 @@ class LatamPayroll {
                     noDataExpression: true,
                     displayOptions: { show: { pais: ['ecuador'] } },
                     options: [
+                        { name: 'Bruto desde Líquido', value: 'bruto_liquido', action: 'Calcular bruto desde liquido' },
                         { name: 'Sueldo Líquido', value: 'sueldo_liquido', action: 'Calcular sueldo liquido' },
                         { name: 'Décimo Tercero', value: 'decimo_tercero', action: 'Calcular decimo tercero' },
                         { name: 'Décimo Cuarto', value: 'decimo_cuarto', action: 'Calcular decimo cuarto' },
                         { name: 'Liquidación', value: 'liquidacion', action: 'Calcular liquidacion' },
                     ],
-                    default: 'sueldo_liquido',
+                    default: 'bruto_liquido',
                 },
                 // ===== ESPAÑA =====
                 {
@@ -725,14 +905,27 @@ class LatamPayroll {
                     noDataExpression: true,
                     displayOptions: { show: { pais: ['espana'] } },
                     options: [
+                        { name: 'Bruto desde Líquido', value: 'bruto_liquido', action: 'Calcular bruto desde liquido' },
                         { name: 'Sueldo Líquido', value: 'sueldo_liquido', action: 'Calcular sueldo liquido' },
                         { name: 'Vacaciones', value: 'vacaciones', action: 'Calcular vacaciones' },
                         { name: 'Pagas Extras', value: 'pagas_extras', action: 'Calcular pagas extras' },
                         { name: 'Finiquito', value: 'finiquito', action: 'Calcular finiquito' },
                     ],
-                    default: 'sueldo_liquido',
+                    default: 'bruto_liquido',
                 },
                 // ===== CAMPOS COMUNES =====
+                {
+                    displayName: 'Sueldo Líquido Deseado',
+                    name: 'liquidoDeseado',
+                    type: 'number',
+                    default: 0,
+                    description: 'Sueldo líquido que desea pagar al empleado',
+                    displayOptions: {
+                        show: {
+                            operation: ['bruto_liquido'],
+                        },
+                    },
+                },
                 {
                     displayName: 'Sueldo Bruto',
                     name: 'sueldoBruto',
@@ -860,12 +1053,18 @@ class LatamPayroll {
             let result = {};
             try {
                 const sueldoBruto = this.getNodeParameter('sueldoBruto', i, 0);
+                const liquidoDeseado = this.getNodeParameter('liquidoDeseado', i, 0);
                 const anosAntiguedad = this.getNodeParameter('anosAntiguedad', i, 1);
                 const mesesTrabajados = this.getNodeParameter('mesesTrabajados', i, 12);
                 const diasVacaciones = this.getNodeParameter('diasVacaciones', i, 0);
                 // CHILE
                 if (pais === 'chile') {
-                    if (operation === 'sueldo_liquido') {
+                    if (operation === 'bruto_liquido') {
+                        const afpPct = this.getNodeParameter('afpPct', i, 10.77);
+                        const saludPct = this.getNodeParameter('saludPct', i, 7);
+                        result = chileCalcularBrutoDesdeLiquido(liquidoDeseado, afpPct, saludPct);
+                    }
+                    else if (operation === 'sueldo_liquido') {
                         const afpPct = this.getNodeParameter('afpPct', i, 10.77);
                         const saludPct = this.getNodeParameter('saludPct', i, 7);
                         result = chileCalcularSueldoLiquido(sueldoBruto, afpPct, saludPct);
@@ -880,7 +1079,10 @@ class LatamPayroll {
                 }
                 // MEXICO
                 else if (pais === 'mexico') {
-                    if (operation === 'sueldo_liquido') {
+                    if (operation === 'bruto_liquido') {
+                        result = mexicoCalcularBrutoDesdeLiquido(liquidoDeseado);
+                    }
+                    else if (operation === 'sueldo_liquido') {
                         result = mexicoCalcularSueldoLiquido(sueldoBruto);
                     }
                     else if (operation === 'vacaciones') {
@@ -895,7 +1097,10 @@ class LatamPayroll {
                 }
                 // ARGENTINA
                 else if (pais === 'argentina') {
-                    if (operation === 'sueldo_liquido') {
+                    if (operation === 'bruto_liquido') {
+                        result = argentinaCalcularBrutoDesdeLiquido(liquidoDeseado);
+                    }
+                    else if (operation === 'sueldo_liquido') {
                         result = argentinaCalcularSueldoLiquido(sueldoBruto);
                     }
                     else if (operation === 'vacaciones') {
@@ -910,7 +1115,10 @@ class LatamPayroll {
                 }
                 // COLOMBIA
                 else if (pais === 'colombia') {
-                    if (operation === 'sueldo_liquido') {
+                    if (operation === 'bruto_liquido') {
+                        result = colombiaCalcularBrutoDesdeLiquido(liquidoDeseado);
+                    }
+                    else if (operation === 'sueldo_liquido') {
                         result = colombiaCalcularSueldoLiquido(sueldoBruto);
                     }
                     else if (operation === 'prima') {
@@ -927,7 +1135,10 @@ class LatamPayroll {
                 }
                 // PERU
                 else if (pais === 'peru') {
-                    if (operation === 'sueldo_liquido') {
+                    if (operation === 'bruto_liquido') {
+                        result = peruCalcularBrutoDesdeLiquido(liquidoDeseado);
+                    }
+                    else if (operation === 'sueldo_liquido') {
                         result = peruCalcularSueldoLiquido(sueldoBruto);
                     }
                     else if (operation === 'gratificacion') {
@@ -942,7 +1153,10 @@ class LatamPayroll {
                 }
                 // BRASIL
                 else if (pais === 'brasil') {
-                    if (operation === 'sueldo_liquido') {
+                    if (operation === 'bruto_liquido') {
+                        result = brasilCalcularBrutoDesdeLiquido(liquidoDeseado);
+                    }
+                    else if (operation === 'sueldo_liquido') {
                         result = brasilCalcularSueldoLiquido(sueldoBruto);
                     }
                     else if (operation === 'ferias') {
@@ -959,7 +1173,10 @@ class LatamPayroll {
                 }
                 // ECUADOR
                 else if (pais === 'ecuador') {
-                    if (operation === 'sueldo_liquido') {
+                    if (operation === 'bruto_liquido') {
+                        result = ecuadorCalcularBrutoDesdeLiquido(liquidoDeseado);
+                    }
+                    else if (operation === 'sueldo_liquido') {
                         result = ecuadorCalcularSueldoLiquido(sueldoBruto);
                     }
                     else if (operation === 'decimo_tercero') {
@@ -974,7 +1191,11 @@ class LatamPayroll {
                 }
                 // ESPAÑA
                 else if (pais === 'espana') {
-                    if (operation === 'sueldo_liquido') {
+                    if (operation === 'bruto_liquido') {
+                        const irpfPct = this.getNodeParameter('irpfPct', i, 15);
+                        result = espanaCalcularBrutoDesdeLiquido(liquidoDeseado, irpfPct);
+                    }
+                    else if (operation === 'sueldo_liquido') {
                         const irpfPct = this.getNodeParameter('irpfPct', i, 15);
                         result = espanaCalcularSueldoLiquido(sueldoBruto, irpfPct);
                     }
