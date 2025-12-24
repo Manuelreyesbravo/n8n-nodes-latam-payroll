@@ -1,46 +1,126 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.LatamPayroll = void 0;
-// ==================== CHILE ====================
-function chileCalcularSueldoLiquido(bruto, afpPct = 10.77, saludPct = 7, cesantiaPct = 0.6) {
-    const afp = Math.round(bruto * afpPct / 100);
-    const salud = Math.round(bruto * saludPct / 100);
-    const cesantia = Math.round(bruto * cesantiaPct / 100);
-    const totalDescuentos = afp + salud + cesantia;
-    const liquido = bruto - totalDescuentos;
+// ==================== CHILE - AFPs REALES 2024 ====================
+const CHILE_AFPS = {
+    'capital': { nombre: 'AFP Capital', cotizacion: 10, sis: 1.49, comision: 1.44 }, // Total: 11.44%
+    'cuprum': { nombre: 'AFP Cuprum', cotizacion: 10, sis: 1.49, comision: 1.44 }, // Total: 11.44%
+    'habitat': { nombre: 'AFP Habitat', cotizacion: 10, sis: 1.49, comision: 1.27 }, // Total: 11.27%
+    'modelo': { nombre: 'AFP Modelo', cotizacion: 10, sis: 1.49, comision: 0.58 }, // Total: 10.58%
+    'planvital': { nombre: 'AFP PlanVital', cotizacion: 10, sis: 1.49, comision: 1.16 }, // Total: 11.16%
+    'provida': { nombre: 'AFP ProVida', cotizacion: 10, sis: 1.49, comision: 1.45 }, // Total: 11.45%
+    'uno': { nombre: 'AFP Uno', cotizacion: 10, sis: 1.49, comision: 0.49 }, // Total: 10.49%
+};
+// Topes imponibles Chile 2024
+const CHILE_UF = 37000; // Valor aproximado UF
+const CHILE_TOPE_IMPONIBLE = 81.6 * CHILE_UF; // 81.6 UF
+const CHILE_TOPE_SEGURO_CESANTIA = 126.6 * CHILE_UF; // 126.6 UF
+function chileCalcularSueldoLiquido(bruto, afpKey = 'modelo', saludPct = 7, cesantiaPct = 0.6, diasMes = 30, diasTrabajados = 30, bonoColacion = 0, bonoMovilizacion = 0, otrosBonos = 0) {
+    // Proporcional por días trabajados
+    const brutoBase = bruto;
+    const brutoProporcional = Math.round(bruto * diasTrabajados / diasMes);
+    // AFP real
+    const afp = CHILE_AFPS[afpKey] || CHILE_AFPS['modelo'];
+    const afpTotal = afp.cotizacion + afp.sis + afp.comision;
+    // Base imponible (con tope)
+    const baseImponible = Math.min(brutoProporcional, CHILE_TOPE_IMPONIBLE);
+    // Descuentos
+    const descuentoAfp = Math.round(baseImponible * afpTotal / 100);
+    const descuentoSalud = Math.round(baseImponible * saludPct / 100);
+    const descuentoCesantia = Math.round(Math.min(brutoProporcional, CHILE_TOPE_SEGURO_CESANTIA) * cesantiaPct / 100);
+    const totalDescuentos = descuentoAfp + descuentoSalud + descuentoCesantia;
+    // Bonos no imponibles
+    const totalBonos = bonoColacion + bonoMovilizacion + otrosBonos;
+    // Líquido final
+    const liquido = brutoProporcional - totalDescuentos + totalBonos;
     return {
         pais: 'Chile',
-        sueldoBruto: bruto,
+        sueldoBrutoBase: brutoBase,
+        diasMes,
+        diasTrabajados,
+        sueldoBrutoProporcional: brutoProporcional,
+        afp: {
+            nombre: afp.nombre,
+            cotizacionObligatoria: afp.cotizacion,
+            sis: afp.sis,
+            comision: afp.comision,
+            totalPorcentaje: afpTotal,
+            monto: descuentoAfp,
+        },
         descuentos: {
-            afp: { porcentaje: afpPct, monto: afp },
-            salud: { porcentaje: saludPct, monto: salud },
-            cesantia: { porcentaje: cesantiaPct, monto: cesantia },
+            afp: descuentoAfp,
+            salud: { porcentaje: saludPct, monto: descuentoSalud },
+            cesantia: { porcentaje: cesantiaPct, monto: descuentoCesantia },
             total: totalDescuentos,
+        },
+        bonos: {
+            colacion: bonoColacion,
+            movilizacion: bonoMovilizacion,
+            otros: otrosBonos,
+            total: totalBonos,
+            nota: 'Bonos no imponibles',
         },
         sueldoLiquido: liquido,
     };
 }
-function chileCalcularBrutoDesdeLiquido(liquidoDeseado, afpPct = 10.77, saludPct = 7, cesantiaPct = 0.6) {
-    // Fórmula inversa: Bruto = Líquido / (1 - totalDescuentos%)
-    const totalDescuentosPct = (afpPct + saludPct + cesantiaPct) / 100;
-    const bruto = Math.round(liquidoDeseado / (1 - totalDescuentosPct));
-    const afp = Math.round(bruto * afpPct / 100);
-    const salud = Math.round(bruto * saludPct / 100);
-    const cesantia = Math.round(bruto * cesantiaPct / 100);
-    const totalDescuentos = afp + salud + cesantia;
-    const liquidoReal = bruto - totalDescuentos;
+function chileCalcularBrutoDesdeLiquido(liquidoDeseado, afpKey = 'modelo', saludPct = 7, cesantiaPct = 0.6, diasMes = 30, diasTrabajados = 30, bonoColacion = 0, bonoMovilizacion = 0, otrosBonos = 0) {
+    // AFP real
+    const afp = CHILE_AFPS[afpKey] || CHILE_AFPS['modelo'];
+    const afpTotal = afp.cotizacion + afp.sis + afp.comision;
+    // Bonos no imponibles
+    const totalBonos = bonoColacion + bonoMovilizacion + otrosBonos;
+    // Líquido sin bonos (lo que debe venir del bruto)
+    const liquidoSinBonos = liquidoDeseado - totalBonos;
+    // Fórmula inversa considerando proporción de días
+    const totalDescuentosPct = (afpTotal + saludPct + cesantiaPct) / 100;
+    const brutoProporcional = Math.round(liquidoSinBonos / (1 - totalDescuentosPct));
+    // Bruto base (si trabajara mes completo)
+    const brutoBase = Math.round(brutoProporcional * diasMes / diasTrabajados);
+    // Calcular descuentos reales
+    const descuentoAfp = Math.round(brutoProporcional * afpTotal / 100);
+    const descuentoSalud = Math.round(brutoProporcional * saludPct / 100);
+    const descuentoCesantia = Math.round(brutoProporcional * cesantiaPct / 100);
+    const totalDescuentos = descuentoAfp + descuentoSalud + descuentoCesantia;
+    // Líquido resultante
+    const liquidoResultante = brutoProporcional - totalDescuentos + totalBonos;
+    // Costo empresa (incluye aporte patronal cesantía 2.4%)
+    const aportePatronalCesantia = Math.round(brutoProporcional * 2.4 / 100);
+    const costoEmpresa = brutoProporcional + aportePatronalCesantia + totalBonos;
     return {
         pais: 'Chile',
         liquidoDeseado,
-        sueldoBrutoNecesario: bruto,
+        diasMes,
+        diasTrabajados,
+        sueldoBrutoBase: brutoBase,
+        sueldoBrutoProporcional: brutoProporcional,
+        afp: {
+            nombre: afp.nombre,
+            cotizacionObligatoria: afp.cotizacion,
+            sis: afp.sis,
+            comision: afp.comision,
+            totalPorcentaje: afpTotal,
+            monto: descuentoAfp,
+        },
         descuentos: {
-            afp: { porcentaje: afpPct, monto: afp },
-            salud: { porcentaje: saludPct, monto: salud },
-            cesantia: { porcentaje: cesantiaPct, monto: cesantia },
+            afp: descuentoAfp,
+            salud: { porcentaje: saludPct, monto: descuentoSalud },
+            cesantia: { porcentaje: cesantiaPct, monto: descuentoCesantia },
             total: totalDescuentos,
         },
-        liquidoResultante: liquidoReal,
-        costoEmpresa: bruto,
+        bonos: {
+            colacion: bonoColacion,
+            movilizacion: bonoMovilizacion,
+            otros: otrosBonos,
+            total: totalBonos,
+        },
+        liquidoResultante,
+        costoEmpresa: {
+            bruto: brutoProporcional,
+            aportePatronalCesantia: aportePatronalCesantia,
+            bonos: totalBonos,
+            total: costoEmpresa,
+            nota: 'Incluye 2.4% aporte patronal seguro cesantía',
+        },
     };
 }
 function chileCalcularVacaciones(sueldoBruto, diasPendientes) {
@@ -79,47 +159,146 @@ function chileCalcularFiniquito(sueldoBruto, anosAntiguedad, diasVacacionesPendi
         nota: 'Indemnización tope 11 años. No incluye gratificación.',
     };
 }
-// ==================== MEXICO ====================
-function mexicoCalcularSueldoLiquido(bruto, imss = 2.775) {
-    const descuentoImss = Math.round(bruto * imss / 100);
-    // ISR simplificado (tabla 2024 aproximada)
+// ==================== MEXICO - ISR Y CUOTAS REALES 2024 ====================
+// UMA 2024: $108.57 diario
+const MEXICO_UMA_DIARIO = 108.57;
+const MEXICO_UMA_MENSUAL = MEXICO_UMA_DIARIO * 30.4;
+// Salario Mínimo 2024
+const MEXICO_SALARIO_MINIMO_GENERAL = 248.93; // Zona general
+const MEXICO_SALARIO_MINIMO_FRONTERA = 374.89; // Zona frontera norte
+// Tabla ISR Mensual 2024
+const MEXICO_ISR_TABLA = [
+    { limiteInferior: 0, limiteSuperior: 746.04, cuotaFija: 0, tasaExcedente: 1.92 },
+    { limiteInferior: 746.05, limiteSuperior: 6332.05, cuotaFija: 14.32, tasaExcedente: 6.40 },
+    { limiteInferior: 6332.06, limiteSuperior: 11128.01, cuotaFija: 371.83, tasaExcedente: 10.88 },
+    { limiteInferior: 11128.02, limiteSuperior: 12935.82, cuotaFija: 893.63, tasaExcedente: 16.00 },
+    { limiteInferior: 12935.83, limiteSuperior: 15487.71, cuotaFija: 1182.88, tasaExcedente: 17.92 },
+    { limiteInferior: 15487.72, limiteSuperior: 31236.49, cuotaFija: 1640.18, tasaExcedente: 21.36 },
+    { limiteInferior: 31236.50, limiteSuperior: 49233.00, cuotaFija: 5004.12, tasaExcedente: 23.52 },
+    { limiteInferior: 49233.01, limiteSuperior: 93993.90, cuotaFija: 9236.89, tasaExcedente: 30.00 },
+    { limiteInferior: 93993.91, limiteSuperior: 125325.20, cuotaFija: 22665.17, tasaExcedente: 32.00 },
+    { limiteInferior: 125325.21, limiteSuperior: 375975.61, cuotaFija: 32691.18, tasaExcedente: 34.00 },
+    { limiteInferior: 375975.62, limiteSuperior: Infinity, cuotaFija: 117912.32, tasaExcedente: 35.00 },
+];
+// Subsidio al empleo mensual 2024
+const MEXICO_SUBSIDIO_TABLA = [
+    { desde: 0, hasta: 1768.96, subsidio: 407.02 },
+    { desde: 1768.97, hasta: 2653.38, subsidio: 406.83 },
+    { desde: 2653.39, hasta: 3472.84, subsidio: 406.62 },
+    { desde: 3472.85, hasta: 3537.87, subsidio: 392.77 },
+    { desde: 3537.88, hasta: 4446.15, subsidio: 382.46 },
+    { desde: 4446.16, hasta: 4717.18, subsidio: 354.23 },
+    { desde: 4717.19, hasta: 5335.42, subsidio: 324.87 },
+    { desde: 5335.43, hasta: 6224.67, subsidio: 294.63 },
+    { desde: 6224.68, hasta: 7113.90, subsidio: 253.54 },
+    { desde: 7113.91, hasta: 7382.33, subsidio: 217.61 },
+    { desde: 7382.34, hasta: Infinity, subsidio: 0 },
+];
+function mexicoCalcularISR(baseGravable) {
+    // Buscar rango en tabla ISR
     let isr = 0;
-    if (bruto > 10298.35)
-        isr = Math.round((bruto - 10298.35) * 0.16);
-    else if (bruto > 8601.50)
-        isr = Math.round((bruto - 8601.50) * 0.1088);
-    else if (bruto > 7399.42)
-        isr = Math.round((bruto - 7399.42) * 0.064);
-    const totalDescuentos = descuentoImss + isr;
-    const liquido = bruto - totalDescuentos;
+    for (const rango of MEXICO_ISR_TABLA) {
+        if (baseGravable >= rango.limiteInferior && baseGravable <= rango.limiteSuperior) {
+            const excedente = baseGravable - rango.limiteInferior;
+            isr = rango.cuotaFija + (excedente * rango.tasaExcedente / 100);
+            break;
+        }
+    }
+    // Buscar subsidio al empleo
+    let subsidio = 0;
+    for (const rango of MEXICO_SUBSIDIO_TABLA) {
+        if (baseGravable >= rango.desde && baseGravable <= rango.hasta) {
+            subsidio = rango.subsidio;
+            break;
+        }
+    }
+    const isrNeto = Math.max(0, isr - subsidio);
+    return { isr: Math.round(isr), subsidio: Math.round(subsidio), isrNeto: Math.round(isrNeto) };
+}
+function mexicoCalcularSueldoLiquido(bruto, zonaFrontera = false, diasMes = 30, diasTrabajados = 30, valesDespensa = 0, ayudaTransporte = 0, otrosBonos = 0) {
+    // Proporcional por días trabajados
+    const brutoBase = bruto;
+    const brutoProporcional = Math.round(bruto * diasTrabajados / diasMes);
+    // IMSS trabajador (aproximado 2.775% del SBC)
+    const imssEmpleado = Math.round(brutoProporcional * 2.775 / 100);
+    // Base gravable para ISR
+    const baseGravable = brutoProporcional - imssEmpleado;
+    // ISR con subsidio
+    const { isr, subsidio, isrNeto } = mexicoCalcularISR(baseGravable);
+    // Bonos no gravables (tienen límites)
+    const limiteValesDespensa = MEXICO_UMA_MENSUAL * 0.4; // 40% UMA
+    const valesExentos = Math.min(valesDespensa, limiteValesDespensa);
+    const totalBonos = valesExentos + ayudaTransporte + otrosBonos;
+    // Descuentos totales
+    const totalDescuentos = imssEmpleado + isrNeto;
+    // Líquido final
+    const liquido = brutoProporcional - totalDescuentos + totalBonos;
     return {
         pais: 'México',
-        sueldoBruto: bruto,
+        zona: zonaFrontera ? 'Frontera Norte' : 'General',
+        sueldoBrutoBase: brutoBase,
+        diasMes,
+        diasTrabajados,
+        sueldoBrutoProporcional: brutoProporcional,
         descuentos: {
-            imss: { porcentaje: imss, monto: descuentoImss },
-            isr: { monto: isr, nota: 'Cálculo simplificado' },
+            imss: { porcentaje: 2.775, monto: imssEmpleado },
+            isr: {
+                baseGravable,
+                isrTabla: isr,
+                subsidioEmpleo: subsidio,
+                isrNeto,
+            },
             total: totalDescuentos,
+        },
+        bonos: {
+            valesDespensa: { monto: valesDespensa, exento: valesExentos, limite: Math.round(limiteValesDespensa) },
+            ayudaTransporte,
+            otros: otrosBonos,
+            total: totalBonos,
         },
         sueldoLiquido: liquido,
     };
 }
-function mexicoCalcularBrutoDesdeLiquido(liquidoDeseado, imss = 2.775) {
-    // Aproximación iterativa por la complejidad del ISR
-    let bruto = liquidoDeseado * 1.15; // Estimación inicial
-    for (let i = 0; i < 10; i++) {
-        const resultado = mexicoCalcularSueldoLiquido(bruto, imss);
-        const diferencia = liquidoDeseado - resultado.sueldoLiquido;
+function mexicoCalcularBrutoDesdeLiquido(liquidoDeseado, zonaFrontera = false, diasMes = 30, diasTrabajados = 30, valesDespensa = 0, ayudaTransporte = 0, otrosBonos = 0) {
+    // Bonos no gravables
+    const limiteValesDespensa = MEXICO_UMA_MENSUAL * 0.4;
+    const valesExentos = Math.min(valesDespensa, limiteValesDespensa);
+    const totalBonos = valesExentos + ayudaTransporte + otrosBonos;
+    // Líquido sin bonos
+    const liquidoSinBonos = liquidoDeseado - totalBonos;
+    // Aproximación iterativa
+    let bruto = liquidoSinBonos * 1.20;
+    for (let i = 0; i < 15; i++) {
+        const resultado = mexicoCalcularSueldoLiquido(bruto, zonaFrontera, diasMes, diasTrabajados, 0, 0, 0);
+        const diferencia = liquidoSinBonos - (resultado.sueldoLiquido);
         bruto = bruto + diferencia;
     }
-    bruto = Math.round(bruto);
-    const final = mexicoCalcularSueldoLiquido(bruto, imss);
+    const brutoProporcional = Math.round(bruto);
+    // Bruto base (mes completo)
+    const brutoBase = Math.round(brutoProporcional * diasMes / diasTrabajados);
+    // Calcular resultado final
+    const final = mexicoCalcularSueldoLiquido(brutoProporcional, zonaFrontera, diasMes, diasTrabajados, valesDespensa, ayudaTransporte, otrosBonos);
+    // Costo empresa (IMSS patronal ~25-30% aprox)
+    const imssPatronal = Math.round(brutoProporcional * 0.25);
+    const costoEmpresa = brutoProporcional + imssPatronal + totalBonos;
     return {
         pais: 'México',
+        zona: zonaFrontera ? 'Frontera Norte' : 'General',
         liquidoDeseado,
-        sueldoBrutoNecesario: bruto,
+        diasMes,
+        diasTrabajados,
+        sueldoBrutoBase: brutoBase,
+        sueldoBrutoProporcional: brutoProporcional,
         descuentos: final.descuentos,
+        bonos: final.bonos,
         liquidoResultante: final.sueldoLiquido,
-        costoEmpresa: bruto,
+        costoEmpresa: {
+            bruto: brutoProporcional,
+            imssPatronal: imssPatronal,
+            bonos: totalBonos,
+            total: costoEmpresa,
+            nota: 'IMSS patronal aprox 25% (varía según riesgo de trabajo)',
+        },
     };
 }
 function mexicoCalcularVacaciones(sueldoMensual, anosAntiguedad) {
@@ -200,45 +379,114 @@ function mexicoCalcularFiniquito(sueldoMensual, anosAntiguedad, diasVacacionesPe
         totalFiniquito: total,
     };
 }
-// ==================== ARGENTINA ====================
-function argentinaCalcularSueldoLiquido(bruto) {
-    const jubilacion = Math.round(bruto * 11 / 100);
-    const obraSocial = Math.round(bruto * 3 / 100);
-    const ley19032 = Math.round(bruto * 3 / 100); // PAMI
-    const totalDescuentos = jubilacion + obraSocial + ley19032;
-    const liquido = bruto - totalDescuentos;
+// ==================== ARGENTINA - DESCUENTOS REALES 2024 ====================
+// SMVM (Salario Mínimo Vital y Móvil) Diciembre 2024
+const ARGENTINA_SMVM = 271571.22;
+// Mínimo No Imponible Ganancias 2024 (mensual)
+const ARGENTINA_MNI = 3091035; // Aproximado mensual
+// Tabla Impuesto a las Ganancias 2024 (mensual)
+const ARGENTINA_GANANCIAS_TABLA = [
+    { desde: 0, hasta: 419253.95, fijo: 0, porcentaje: 5 },
+    { desde: 419253.95, hasta: 838507.92, fijo: 20962.70, porcentaje: 9 },
+    { desde: 838507.92, hasta: 1257761.87, fijo: 58695.56, porcentaje: 12 },
+    { desde: 1257761.87, hasta: 1677015.83, fijo: 109006.03, porcentaje: 15 },
+    { desde: 1677015.83, hasta: 2515523.75, fijo: 171894.02, porcentaje: 19 },
+    { desde: 2515523.75, hasta: 3354031.66, fijo: 331210.53, porcentaje: 23 },
+    { desde: 3354031.66, hasta: 5031047.50, fijo: 524067.35, porcentaje: 27 },
+    { desde: 5031047.50, hasta: 6708063.33, fijo: 976861.62, porcentaje: 31 },
+    { desde: 6708063.33, hasta: Infinity, fijo: 1496736.53, porcentaje: 35 },
+];
+function argentinaCalcularGanancias(baseImponible) {
+    if (baseImponible <= 0)
+        return 0;
+    for (const tramo of ARGENTINA_GANANCIAS_TABLA) {
+        if (baseImponible > tramo.desde && baseImponible <= tramo.hasta) {
+            const excedente = baseImponible - tramo.desde;
+            return Math.round(tramo.fijo + (excedente * tramo.porcentaje / 100));
+        }
+    }
+    // Último tramo
+    const ultimo = ARGENTINA_GANANCIAS_TABLA[ARGENTINA_GANANCIAS_TABLA.length - 1];
+    const excedente = baseImponible - ultimo.desde;
+    return Math.round(ultimo.fijo + (excedente * ultimo.porcentaje / 100));
+}
+function argentinaCalcularSueldoLiquido(bruto, obraSocialPct = 3, sindicatoPct = 2, diasMes = 30, diasTrabajados = 30, bonoNoRemunerativo = 0, tieneHijos = false, cantidadHijos = 0) {
+    // Proporcional por días trabajados
+    const brutoBase = bruto;
+    const brutoProporcional = Math.round(bruto * diasTrabajados / diasMes);
+    // Descuentos obligatorios
+    const jubilacion = Math.round(brutoProporcional * 11 / 100);
+    const obraSocial = Math.round(brutoProporcional * obraSocialPct / 100);
+    const ley19032 = Math.round(brutoProporcional * 3 / 100); // PAMI
+    const sindicato = Math.round(brutoProporcional * sindicatoPct / 100);
+    // Base para Ganancias (con deducciones)
+    const deduccionEspecial = ARGENTINA_MNI / 12; // Mensualizado
+    const deduccionHijos = tieneHijos ? (cantidadHijos * 78833) : 0; // Deducción por hijo
+    const baseGanancias = Math.max(0, brutoProporcional - jubilacion - obraSocial - ley19032 - deduccionEspecial - deduccionHijos);
+    const ganancias = argentinaCalcularGanancias(baseGanancias);
+    const totalDescuentos = jubilacion + obraSocial + ley19032 + sindicato + ganancias;
+    // Líquido final (bonos no remunerativos se suman al final)
+    const liquido = brutoProporcional - totalDescuentos + bonoNoRemunerativo;
     return {
         pais: 'Argentina',
-        sueldoBruto: bruto,
+        sueldoBrutoBase: brutoBase,
+        diasMes,
+        diasTrabajados,
+        sueldoBrutoProporcional: brutoProporcional,
         descuentos: {
             jubilacion: { porcentaje: 11, monto: jubilacion },
-            obraSocial: { porcentaje: 3, monto: obraSocial },
+            obraSocial: { porcentaje: obraSocialPct, monto: obraSocial },
             ley19032Pami: { porcentaje: 3, monto: ley19032 },
+            sindicato: { porcentaje: sindicatoPct, monto: sindicato },
+            ganancias: {
+                baseImponible: Math.round(baseGanancias),
+                monto: ganancias,
+                nota: baseGanancias <= 0 ? 'Exento (debajo del MNI)' : 'Según tabla 2024',
+            },
             total: totalDescuentos,
         },
+        bonosNoRemunerativos: bonoNoRemunerativo,
         sueldoLiquido: liquido,
+        smvm2024: ARGENTINA_SMVM,
     };
 }
-function argentinaCalcularBrutoDesdeLiquido(liquidoDeseado) {
-    // Descuentos fijos: 11% + 3% + 3% = 17%
-    const bruto = Math.round(liquidoDeseado / (1 - 0.17));
-    const jubilacion = Math.round(bruto * 11 / 100);
-    const obraSocial = Math.round(bruto * 3 / 100);
-    const ley19032 = Math.round(bruto * 3 / 100);
-    const totalDescuentos = jubilacion + obraSocial + ley19032;
-    const liquidoReal = bruto - totalDescuentos;
+function argentinaCalcularBrutoDesdeLiquido(liquidoDeseado, obraSocialPct = 3, sindicatoPct = 2, diasMes = 30, diasTrabajados = 30, bonoNoRemunerativo = 0) {
+    // Líquido sin bonos
+    const liquidoSinBonos = liquidoDeseado - bonoNoRemunerativo;
+    // Descuentos básicos: 11% + obraSocial + 3% + sindicato = 17% + extras
+    const descuentoBasePct = (11 + obraSocialPct + 3 + sindicatoPct) / 100;
+    // Aproximación iterativa (por ganancias progresivas)
+    let bruto = liquidoSinBonos / (1 - descuentoBasePct);
+    for (let i = 0; i < 10; i++) {
+        const resultado = argentinaCalcularSueldoLiquido(bruto, obraSocialPct, sindicatoPct, diasMes, diasTrabajados, 0, false, 0);
+        const diferencia = liquidoSinBonos - resultado.sueldoLiquido;
+        bruto = bruto + diferencia;
+    }
+    const brutoProporcional = Math.round(bruto);
+    // Bruto base (mes completo)
+    const brutoBase = Math.round(brutoProporcional * diasMes / diasTrabajados);
+    // Calcular resultado final
+    const final = argentinaCalcularSueldoLiquido(brutoProporcional, obraSocialPct, sindicatoPct, diasMes, diasTrabajados, bonoNoRemunerativo, false, 0);
+    // Costo empresa (cargas sociales patronales ~23%)
+    const cargasPatronales = Math.round(brutoProporcional * 0.23);
+    const costoEmpresa = brutoProporcional + cargasPatronales + bonoNoRemunerativo;
     return {
         pais: 'Argentina',
         liquidoDeseado,
-        sueldoBrutoNecesario: bruto,
-        descuentos: {
-            jubilacion: { porcentaje: 11, monto: jubilacion },
-            obraSocial: { porcentaje: 3, monto: obraSocial },
-            ley19032Pami: { porcentaje: 3, monto: ley19032 },
-            total: totalDescuentos,
+        diasMes,
+        diasTrabajados,
+        sueldoBrutoBase: brutoBase,
+        sueldoBrutoProporcional: brutoProporcional,
+        descuentos: final.descuentos,
+        bonosNoRemunerativos: bonoNoRemunerativo,
+        liquidoResultante: final.sueldoLiquido,
+        costoEmpresa: {
+            bruto: brutoProporcional,
+            cargasPatronales,
+            bonos: bonoNoRemunerativo,
+            total: costoEmpresa,
+            nota: 'Cargas patronales aprox 23% (jubilación, obra social, ART, etc.)',
         },
-        liquidoResultante: liquidoReal,
-        costoEmpresa: bruto,
     };
 }
 function argentinaCalcularVacaciones(sueldoBruto, anosAntiguedad) {
@@ -291,43 +539,121 @@ function argentinaCalcularIndemnizacion(mejorSueldoUltimoAno, anosAntiguedad, di
         totalIndemnizacion: total,
     };
 }
-// ==================== COLOMBIA ====================
-function colombiaCalcularSueldoLiquido(bruto) {
-    const pension = Math.round(bruto * 4 / 100);
-    const salud = Math.round(bruto * 4 / 100);
-    const totalDescuentos = pension + salud;
-    const liquido = bruto - totalDescuentos;
+// ==================== COLOMBIA - VALORES REALES 2024 ====================
+// SMMLV 2024
+const COLOMBIA_SMMLV = 1300000;
+const COLOMBIA_AUXILIO_TRANSPORTE = 162000; // Para salarios hasta 2 SMMLV
+// UVT 2024
+const COLOMBIA_UVT = 47065;
+// Tabla retención en la fuente 2024 (rangos en UVT)
+const COLOMBIA_RETENCION_TABLA = [
+    { desde: 0, hasta: 95, tarifa: 0, adicional: 0 },
+    { desde: 95, hasta: 150, tarifa: 19, adicional: 0 },
+    { desde: 150, hasta: 360, tarifa: 28, adicional: 10 },
+    { desde: 360, hasta: 640, tarifa: 33, adicional: 69 },
+    { desde: 640, hasta: 945, tarifa: 35, adicional: 162 },
+    { desde: 945, hasta: 2300, tarifa: 37, adicional: 268 },
+    { desde: 2300, hasta: Infinity, tarifa: 39, adicional: 770 },
+];
+function colombiaCalcularRetencion(baseGravableUVT) {
+    for (const rango of COLOMBIA_RETENCION_TABLA) {
+        if (baseGravableUVT > rango.desde && baseGravableUVT <= rango.hasta) {
+            const excedente = baseGravableUVT - rango.desde;
+            return Math.round((excedente * rango.tarifa / 100 + rango.adicional) * COLOMBIA_UVT);
+        }
+    }
+    return 0;
+}
+function colombiaCalcularSueldoLiquido(bruto, diasMes = 30, diasTrabajados = 30, incluyeAuxilioTransporte = true, bonosNoSalariales = 0) {
+    // Proporcional por días trabajados
+    const brutoBase = bruto;
+    const brutoProporcional = Math.round(bruto * diasTrabajados / diasMes);
+    // Auxilio de transporte (solo si salario <= 2 SMMLV)
+    const aplicaAuxilio = incluyeAuxilioTransporte && brutoBase <= (2 * COLOMBIA_SMMLV);
+    const auxilioTransporte = aplicaAuxilio ? Math.round(COLOMBIA_AUXILIO_TRANSPORTE * diasTrabajados / diasMes) : 0;
+    // Descuentos obligatorios
+    const pension = Math.round(brutoProporcional * 4 / 100);
+    const salud = Math.round(brutoProporcional * 4 / 100);
+    // Fondo de Solidaridad Pensional (solo si > 4 SMMLV)
+    let fondoSolidaridad = 0;
+    if (brutoProporcional > 4 * COLOMBIA_SMMLV) {
+        fondoSolidaridad = Math.round(brutoProporcional * 1 / 100);
+    }
+    // Retención en la fuente (si aplica)
+    const baseGravable = brutoProporcional - pension - salud;
+    const baseGravableUVT = baseGravable / COLOMBIA_UVT;
+    const retencion = colombiaCalcularRetencion(baseGravableUVT);
+    const totalDescuentos = pension + salud + fondoSolidaridad + retencion;
+    // Líquido final
+    const liquido = brutoProporcional - totalDescuentos + auxilioTransporte + bonosNoSalariales;
     return {
         pais: 'Colombia',
-        sueldoBruto: bruto,
+        sueldoBrutoBase: brutoBase,
+        diasMes,
+        diasTrabajados,
+        sueldoBrutoProporcional: brutoProporcional,
+        auxilioTransporte: {
+            aplica: aplicaAuxilio,
+            monto: auxilioTransporte,
+            nota: aplicaAuxilio ? 'Salario <= 2 SMMLV' : 'No aplica (salario > 2 SMMLV)',
+        },
         descuentos: {
             pension: { porcentaje: 4, monto: pension },
             salud: { porcentaje: 4, monto: salud },
+            fondoSolidaridad: { aplica: fondoSolidaridad > 0, monto: fondoSolidaridad },
+            retencionFuente: { baseUVT: Math.round(baseGravableUVT * 100) / 100, monto: retencion },
             total: totalDescuentos,
         },
+        bonosNoSalariales,
         sueldoLiquido: liquido,
-        nota: 'Empleador aporta adicional 12% pensión y 8.5% salud',
+        smmlv2024: COLOMBIA_SMMLV,
     };
 }
-function colombiaCalcularBrutoDesdeLiquido(liquidoDeseado) {
-    // Descuentos fijos: 4% + 4% = 8%
-    const bruto = Math.round(liquidoDeseado / (1 - 0.08));
-    const pension = Math.round(bruto * 4 / 100);
-    const salud = Math.round(bruto * 4 / 100);
-    const totalDescuentos = pension + salud;
-    const liquidoReal = bruto - totalDescuentos;
+function colombiaCalcularBrutoDesdeLiquido(liquidoDeseado, diasMes = 30, diasTrabajados = 30, incluyeAuxilioTransporte = true, bonosNoSalariales = 0) {
+    // Aproximación iterativa
+    let bruto = liquidoDeseado * 1.12;
+    for (let i = 0; i < 15; i++) {
+        const resultado = colombiaCalcularSueldoLiquido(bruto, diasMes, diasTrabajados, incluyeAuxilioTransporte, bonosNoSalariales);
+        const diferencia = liquidoDeseado - resultado.sueldoLiquido;
+        bruto = bruto + diferencia;
+    }
+    const brutoProporcional = Math.round(bruto);
+    // Bruto base (mes completo)
+    const brutoBase = Math.round(brutoProporcional * diasMes / diasTrabajados);
+    // Calcular resultado final
+    const final = colombiaCalcularSueldoLiquido(brutoProporcional, diasMes, diasTrabajados, incluyeAuxilioTransporte, bonosNoSalariales);
+    // Costo empresa (aportes patronales ~21.5%)
+    const pensionPatronal = Math.round(brutoProporcional * 12 / 100);
+    const saludPatronal = Math.round(brutoProporcional * 8.5 / 100);
+    const arlPatronal = Math.round(brutoProporcional * 0.522 / 100); // Riesgo I
+    const cajaCompensacion = Math.round(brutoProporcional * 4 / 100);
+    const icbf = Math.round(brutoProporcional * 3 / 100);
+    const sena = Math.round(brutoProporcional * 2 / 100);
+    const cargasPatronales = pensionPatronal + saludPatronal + arlPatronal + cajaCompensacion + icbf + sena;
+    const costoEmpresa = brutoProporcional + cargasPatronales + final.auxilioTransporte.monto + bonosNoSalariales;
     return {
         pais: 'Colombia',
         liquidoDeseado,
-        sueldoBrutoNecesario: bruto,
-        descuentos: {
-            pension: { porcentaje: 4, monto: pension },
-            salud: { porcentaje: 4, monto: salud },
-            total: totalDescuentos,
+        diasMes,
+        diasTrabajados,
+        sueldoBrutoBase: brutoBase,
+        sueldoBrutoProporcional: brutoProporcional,
+        auxilioTransporte: final.auxilioTransporte,
+        descuentos: final.descuentos,
+        bonosNoSalariales,
+        liquidoResultante: final.sueldoLiquido,
+        costoEmpresa: {
+            bruto: brutoProporcional,
+            pensionPatronal12: pensionPatronal,
+            saludPatronal85: saludPatronal,
+            arl: arlPatronal,
+            cajaCompensacion4: cajaCompensacion,
+            icbf3: icbf,
+            sena2: sena,
+            auxilioTransporte: final.auxilioTransporte.monto,
+            bonos: bonosNoSalariales,
+            total: costoEmpresa,
         },
-        liquidoResultante: liquidoReal,
-        costoEmpresa: bruto,
-        nota: 'Costo empresa total = Bruto + 12% pensión + 8.5% salud + parafiscales',
     };
 }
 function colombiaCalcularPrima(sueldoMensual, mesesTrabajados = 6) {
@@ -377,48 +703,144 @@ function colombiaCalcularLiquidacion(sueldoMensual, anosAntiguedad, diasTrabajad
         totalLiquidacion: total,
     };
 }
-// ==================== PERU ====================
-function peruCalcularSueldoLiquido(bruto, afpPct = 10) {
-    const afp = Math.round(bruto * afpPct / 100);
-    const comisionAfp = Math.round(bruto * 1.69 / 100);
-    const seguroAfp = Math.round(bruto * 1.36 / 100);
-    const totalDescuentos = afp + comisionAfp + seguroAfp;
-    const liquido = bruto - totalDescuentos;
+// ==================== PERU - AFPs REALES 2024 ====================
+// RMV (Remuneración Mínima Vital) 2024
+const PERU_RMV = 1025;
+// AFPs con comisiones reales 2024 (flujo)
+const PERU_AFPS = {
+    'habitat': { nombre: 'AFP Habitat', comisionFlujo: 1.47, seguro: 1.36 },
+    'integra': { nombre: 'AFP Integra', comisionFlujo: 1.55, seguro: 1.36 },
+    'prima': { nombre: 'AFP Prima', comisionFlujo: 1.60, seguro: 1.36 },
+    'profuturo': { nombre: 'AFP Profuturo', comisionFlujo: 1.69, seguro: 1.36 },
+};
+// ONP (sistema público)
+const PERU_ONP_PCT = 13;
+// Tope para 5ta categoría 2024
+const PERU_UIT = 5150;
+const PERU_TOPE_5TA = 7 * PERU_UIT; // 7 UIT exento
+function peruCalcular5taCategoria(remuneracionAnual) {
+    // Proyección anual - simplificado
+    const baseGravable = Math.max(0, remuneracionAnual - PERU_TOPE_5TA);
+    if (baseGravable <= 0)
+        return 0;
+    // Tasas progresivas
+    let impuesto = 0;
+    if (baseGravable <= 5 * PERU_UIT) {
+        impuesto = baseGravable * 0.08;
+    }
+    else if (baseGravable <= 20 * PERU_UIT) {
+        impuesto = 5 * PERU_UIT * 0.08 + (baseGravable - 5 * PERU_UIT) * 0.14;
+    }
+    else if (baseGravable <= 35 * PERU_UIT) {
+        impuesto = 5 * PERU_UIT * 0.08 + 15 * PERU_UIT * 0.14 + (baseGravable - 20 * PERU_UIT) * 0.17;
+    }
+    else if (baseGravable <= 45 * PERU_UIT) {
+        impuesto = 5 * PERU_UIT * 0.08 + 15 * PERU_UIT * 0.14 + 15 * PERU_UIT * 0.17 + (baseGravable - 35 * PERU_UIT) * 0.20;
+    }
+    else {
+        impuesto = 5 * PERU_UIT * 0.08 + 15 * PERU_UIT * 0.14 + 15 * PERU_UIT * 0.17 + 10 * PERU_UIT * 0.20 + (baseGravable - 45 * PERU_UIT) * 0.30;
+    }
+    // Retorno mensual (dividido entre 12)
+    return Math.round(impuesto / 12);
+}
+function peruCalcularSueldoLiquido(bruto, sistemaAFP = 'habitat', // 'habitat', 'integra', 'prima', 'profuturo', 'onp'
+diasMes = 30, diasTrabajados = 30, asignacionFamiliar = false, bonosNoAfectos = 0) {
+    // Proporcional por días trabajados
+    const brutoBase = bruto;
+    const brutoProporcional = Math.round(bruto * diasTrabajados / diasMes);
+    // Asignación familiar (10% RMV si tiene hijos)
+    const asignacion = asignacionFamiliar ? Math.round(PERU_RMV * 0.10) : 0;
+    const baseAportes = brutoProporcional + asignacion;
+    let descuentoPension = 0;
+    let comision = 0;
+    let seguro = 0;
+    let sistemaNombre = '';
+    if (sistemaAFP === 'onp') {
+        // ONP (sistema público)
+        descuentoPension = Math.round(baseAportes * PERU_ONP_PCT / 100);
+        sistemaNombre = 'ONP (Sistema Nacional de Pensiones)';
+    }
+    else {
+        // AFP privada
+        const afp = PERU_AFPS[sistemaAFP] || PERU_AFPS['habitat'];
+        descuentoPension = Math.round(baseAportes * 10 / 100); // Aporte obligatorio 10%
+        comision = Math.round(baseAportes * afp.comisionFlujo / 100);
+        seguro = Math.round(baseAportes * afp.seguro / 100);
+        sistemaNombre = afp.nombre;
+    }
+    // 5ta categoría (impuesto a la renta)
+    const proyeccionAnual = baseAportes * 12 + baseAportes * 2; // + gratificaciones
+    const retencion5ta = peruCalcular5taCategoria(proyeccionAnual);
+    const totalDescuentos = descuentoPension + comision + seguro + retencion5ta;
+    // Líquido final
+    const liquido = baseAportes - totalDescuentos + bonosNoAfectos;
     return {
         pais: 'Perú',
-        sueldoBruto: bruto,
+        sueldoBrutoBase: brutoBase,
+        diasMes,
+        diasTrabajados,
+        sueldoBrutoProporcional: brutoProporcional,
+        asignacionFamiliar: {
+            aplica: asignacionFamiliar,
+            monto: asignacion,
+            nota: asignacionFamiliar ? '10% de RMV' : 'No aplica',
+        },
+        baseAportes,
+        sistemaPensiones: {
+            nombre: sistemaNombre,
+            aporte: descuentoPension,
+            comision: comision,
+            seguro: seguro,
+        },
         descuentos: {
-            afp: { porcentaje: afpPct, monto: afp },
-            comisionAfp: { porcentaje: 1.69, monto: comisionAfp },
-            seguroAfp: { porcentaje: 1.36, monto: seguroAfp },
+            pension: descuentoPension,
+            comision,
+            seguro,
+            retencion5ta: { monto: retencion5ta, nota: retencion5ta > 0 ? 'Según proyección anual' : 'Exento (< 7 UIT)' },
             total: totalDescuentos,
         },
+        bonosNoAfectos,
         sueldoLiquido: liquido,
-        nota: 'EsSalud (9%) lo paga el empleador',
+        rmv2024: PERU_RMV,
     };
 }
-function peruCalcularBrutoDesdeLiquido(liquidoDeseado, afpPct = 10) {
-    // Descuentos: AFP + comisión 1.69% + seguro 1.36%
-    const totalPct = (afpPct + 1.69 + 1.36) / 100;
-    const bruto = Math.round(liquidoDeseado / (1 - totalPct));
-    const afp = Math.round(bruto * afpPct / 100);
-    const comisionAfp = Math.round(bruto * 1.69 / 100);
-    const seguroAfp = Math.round(bruto * 1.36 / 100);
-    const totalDescuentos = afp + comisionAfp + seguroAfp;
-    const liquidoReal = bruto - totalDescuentos;
+function peruCalcularBrutoDesdeLiquido(liquidoDeseado, sistemaAFP = 'habitat', diasMes = 30, diasTrabajados = 30, asignacionFamiliar = false, bonosNoAfectos = 0) {
+    // Líquido sin bonos
+    const liquidoSinBonos = liquidoDeseado - bonosNoAfectos;
+    // Aproximación iterativa
+    let bruto = liquidoSinBonos * 1.15;
+    for (let i = 0; i < 15; i++) {
+        const resultado = peruCalcularSueldoLiquido(bruto, sistemaAFP, diasMes, diasTrabajados, asignacionFamiliar, 0);
+        const diferencia = liquidoSinBonos - resultado.sueldoLiquido;
+        bruto = bruto + diferencia;
+    }
+    const brutoProporcional = Math.round(bruto);
+    // Bruto base (mes completo)
+    const brutoBase = Math.round(brutoProporcional * diasMes / diasTrabajados);
+    // Calcular resultado final
+    const final = peruCalcularSueldoLiquido(brutoProporcional, sistemaAFP, diasMes, diasTrabajados, asignacionFamiliar, bonosNoAfectos);
+    // Costo empresa (EsSalud 9%)
+    const essalud = Math.round(final.baseAportes * 9 / 100);
+    const costoEmpresa = final.baseAportes + essalud + bonosNoAfectos;
     return {
         pais: 'Perú',
         liquidoDeseado,
-        sueldoBrutoNecesario: bruto,
-        descuentos: {
-            afp: { porcentaje: afpPct, monto: afp },
-            comisionAfp: { porcentaje: 1.69, monto: comisionAfp },
-            seguroAfp: { porcentaje: 1.36, monto: seguroAfp },
-            total: totalDescuentos,
+        diasMes,
+        diasTrabajados,
+        sueldoBrutoBase: brutoBase,
+        sueldoBrutoProporcional: brutoProporcional,
+        asignacionFamiliar: final.asignacionFamiliar,
+        sistemaPensiones: final.sistemaPensiones,
+        descuentos: final.descuentos,
+        bonosNoAfectos,
+        liquidoResultante: final.sueldoLiquido,
+        costoEmpresa: {
+            baseAportes: final.baseAportes,
+            essalud9: essalud,
+            bonos: bonosNoAfectos,
+            total: costoEmpresa,
+            nota: 'EsSalud 9% lo paga empleador',
         },
-        liquidoResultante: liquidoReal,
-        costoEmpresa: Math.round(bruto * 1.09), // +9% EsSalud
-        nota: 'Costo empresa incluye 9% EsSalud',
     };
 }
 function peruCalcularGratificacion(sueldoMensual, mesesTrabajados = 6) {
@@ -469,62 +891,128 @@ function peruCalcularLiquidacion(sueldoMensual, anosAntiguedad, mesesUltimoAno) 
         totalLiquidacion: total,
     };
 }
-// ==================== BRASIL ====================
-function brasilCalcularSueldoLiquido(bruto) {
-    // INSS 2024 (tabela progressiva)
+// ==================== BRASIL - TABELAS REAIS 2024 ====================
+// Salário Mínimo 2024
+const BRASIL_SALARIO_MINIMO = 1412.00;
+// Tabela INSS 2024 (progressiva)
+const BRASIL_INSS_TABELA = [
+    { ate: 1412.00, aliquota: 7.5 },
+    { ate: 2666.68, aliquota: 9 },
+    { ate: 4000.03, aliquota: 12 },
+    { ate: 7786.02, aliquota: 14 },
+];
+const BRASIL_INSS_TETO = 908.85;
+// Tabela IRRF 2024
+const BRASIL_IRRF_TABELA = [
+    { ate: 2259.20, aliquota: 0, deducao: 0 },
+    { ate: 2826.65, aliquota: 7.5, deducao: 169.44 },
+    { ate: 3751.05, aliquota: 15, deducao: 381.44 },
+    { ate: 4664.68, aliquota: 22.5, deducao: 662.77 },
+    { ate: Infinity, aliquota: 27.5, deducao: 896.00 },
+];
+const BRASIL_DEDUCAO_DEPENDENTE = 189.59;
+function brasilCalcularINSS(salario) {
     let inss = 0;
-    if (bruto <= 1412.00)
-        inss = bruto * 0.075;
-    else if (bruto <= 2666.68)
-        inss = 105.90 + (bruto - 1412.00) * 0.09;
-    else if (bruto <= 4000.03)
-        inss = 218.81 + (bruto - 2666.68) * 0.12;
-    else if (bruto <= 7786.02)
-        inss = 378.81 + (bruto - 4000.03) * 0.14;
-    else
-        inss = 908.85; // Teto
-    inss = Math.round(inss);
-    const baseIrrf = bruto - inss;
-    // IRRF simplificado
-    let irrf = 0;
-    if (baseIrrf > 4664.68)
-        irrf = Math.round((baseIrrf - 4664.68) * 0.275);
-    else if (baseIrrf > 3751.05)
-        irrf = Math.round((baseIrrf - 3751.05) * 0.225);
-    else if (baseIrrf > 2826.65)
-        irrf = Math.round((baseIrrf - 2826.65) * 0.15);
-    else if (baseIrrf > 2259.20)
-        irrf = Math.round((baseIrrf - 2259.20) * 0.075);
-    const liquido = bruto - inss - irrf;
+    let salarioRestante = salario;
+    let faixaAnterior = 0;
+    for (const faixa of BRASIL_INSS_TABELA) {
+        if (salarioRestante <= 0)
+            break;
+        const baseCalculo = Math.min(salarioRestante, faixa.ate - faixaAnterior);
+        inss += baseCalculo * faixa.aliquota / 100;
+        salarioRestante -= baseCalculo;
+        faixaAnterior = faixa.ate;
+    }
+    return Math.min(Math.round(inss * 100) / 100, BRASIL_INSS_TETO);
+}
+function brasilCalcularIRRF(baseCalculo, dependentes = 0) {
+    const deducaoDependentes = dependentes * BRASIL_DEDUCAO_DEPENDENTE;
+    const baseIrrf = baseCalculo - deducaoDependentes;
+    if (baseIrrf <= 0)
+        return 0;
+    for (const faixa of BRASIL_IRRF_TABELA) {
+        if (baseIrrf <= faixa.ate) {
+            const irrf = (baseIrrf * faixa.aliquota / 100) - faixa.deducao;
+            return Math.max(0, Math.round(irrf * 100) / 100);
+        }
+    }
+    return 0;
+}
+function brasilCalcularSueldoLiquido(bruto, diasMes = 30, diasTrabalhados = 30, dependentes = 0, valeTransporte = false, valeRefeicao = 0, outrosBeneficios = 0) {
+    // Proporcional por dias trabalhados
+    const brutoBase = bruto;
+    const brutoProporcional = Math.round(bruto * diasTrabalhados / diasMes * 100) / 100;
+    // INSS progressivo
+    const inss = brasilCalcularINSS(brutoProporcional);
+    // Base para IRRF
+    const baseIrrf = brutoProporcional - inss;
+    const irrf = brasilCalcularIRRF(baseIrrf, dependentes);
+    // Vale transporte (desconto 6% se optar)
+    const descontoVT = valeTransporte ? Math.round(brutoProporcional * 6 / 100) : 0;
+    const totalDescontos = Math.round((inss + irrf + descontoVT) * 100) / 100;
+    // Benefícios (não tributados)
+    const totalBeneficios = valeRefeicao + outrosBeneficios;
+    // Líquido final
+    const liquido = Math.round((brutoProporcional - totalDescontos + totalBeneficios) * 100) / 100;
     return {
         pais: 'Brasil',
-        salarioBruto: bruto,
+        salarioBrutoBase: brutoBase,
+        diasMes,
+        diasTrabalhados,
+        salarioBrutoProporcional: brutoProporcional,
         descontos: {
-            inss: { monto: inss, nota: 'Tabela progressiva 2024' },
-            irrf: { monto: irrf, nota: 'Cálculo simplificado' },
-            total: inss + irrf,
+            inss: { monto: inss, nota: 'Tabela progressiva 2024', teto: BRASIL_INSS_TETO },
+            irrf: { base: baseIrrf, dependentes, monto: irrf },
+            valeTransporte: { aplica: valeTransporte, desconto6: descontoVT },
+            total: totalDescontos,
+        },
+        beneficios: {
+            valeRefeicao,
+            outros: outrosBeneficios,
+            total: totalBeneficios,
         },
         salarioLiquido: liquido,
+        salarioMinimo2024: BRASIL_SALARIO_MINIMO,
     };
 }
-function brasilCalcularBrutoDesdeLiquido(liquidoDeseado) {
-    // Aproximación iterativa por la complejidad de INSS e IRRF progresivos
-    let bruto = liquidoDeseado * 1.25; // Estimación inicial
-    for (let i = 0; i < 10; i++) {
-        const resultado = brasilCalcularSueldoLiquido(bruto);
-        const diferencia = liquidoDeseado - resultado.salarioLiquido;
+function brasilCalcularBrutoDesdeLiquido(liquidoDesejado, diasMes = 30, diasTrabalhados = 30, dependentes = 0, valeTransporte = false, valeRefeicao = 0, outrosBeneficios = 0) {
+    // Benefícios
+    const totalBeneficios = valeRefeicao + outrosBeneficios;
+    const liquidoSemBeneficios = liquidoDesejado - totalBeneficios;
+    // Aproximação iterativa
+    let bruto = liquidoSemBeneficios * 1.30;
+    for (let i = 0; i < 15; i++) {
+        const resultado = brasilCalcularSueldoLiquido(bruto, diasMes, diasTrabalhados, dependentes, valeTransporte, 0, 0);
+        const diferencia = liquidoSemBeneficios - resultado.salarioLiquido;
         bruto = bruto + diferencia;
     }
-    bruto = Math.round(bruto);
-    const final = brasilCalcularSueldoLiquido(bruto);
+    const brutoProporcional = Math.round(bruto * 100) / 100;
+    // Bruto base (mês completo)
+    const brutoBase = Math.round(brutoProporcional * diasMes / diasTrabalhados * 100) / 100;
+    // Calcular resultado final
+    const final = brasilCalcularSueldoLiquido(brutoProporcional, diasMes, diasTrabalhados, dependentes, valeTransporte, valeRefeicao, outrosBeneficios);
+    // Custo empresa (FGTS 8% + INSS patronal ~20%)
+    const fgts = Math.round(brutoProporcional * 8 / 100);
+    const inssPatronal = Math.round(brutoProporcional * 20 / 100);
+    const custoEmpresa = brutoProporcional + fgts + inssPatronal + totalBeneficios;
     return {
         pais: 'Brasil',
-        liquidoDesejado: liquidoDeseado,
-        salarioBrutoNecessario: bruto,
+        liquidoDesejado,
+        diasMes,
+        diasTrabalhados,
+        salarioBrutoBase: brutoBase,
+        salarioBrutoProporcional: brutoProporcional,
         descontos: final.descontos,
+        beneficios: final.beneficios,
         liquidoResultante: final.salarioLiquido,
-        custoEmpresa: Math.round(bruto * 1.08), // +8% FGTS aprox
-        nota: 'Custo empresa inclui ~8% FGTS',
+        custoEmpresa: {
+            bruto: brutoProporcional,
+            fgts8: fgts,
+            inssPatronal20: inssPatronal,
+            beneficios: totalBeneficios,
+            total: Math.round(custoEmpresa),
+            nota: 'FGTS 8% + encargos patronais ~20%',
+        },
     };
 }
 function brasilCalcularFerias(salarioMensual, diasFerias = 30) {
@@ -575,37 +1063,104 @@ function brasilCalcularRescisao(salarioMensual, mesesTrabalhados, saldoFgts, dem
         tipo: demissaoSemJustaCausa ? 'Demissão sem justa causa' : 'Demissão com justa causa',
     };
 }
-// ==================== ECUADOR ====================
-function ecuadorCalcularSueldoLiquido(bruto) {
-    const iess = Math.round(bruto * 9.45 / 100);
-    const liquido = bruto - iess;
+// ==================== ECUADOR - VALORES REALES 2024 ====================
+// SBU (Salario Básico Unificado) 2024
+const ECUADOR_SBU = 460;
+// Tabla Impuesto a la Renta 2024
+const ECUADOR_IR_TABLA = [
+    { desde: 0, hasta: 11902, impuesto: 0, exceso: 0 },
+    { desde: 11902, hasta: 15159, impuesto: 0, exceso: 5 },
+    { desde: 15159, hasta: 19682, impuesto: 163, exceso: 10 },
+    { desde: 19682, hasta: 26031, impuesto: 615, exceso: 12 },
+    { desde: 26031, hasta: 34255, impuesto: 1377, exceso: 15 },
+    { desde: 34255, hasta: 45407, impuesto: 2611, exceso: 20 },
+    { desde: 45407, hasta: 60450, impuesto: 4841, exceso: 25 },
+    { desde: 60450, hasta: 80605, impuesto: 8602, exceso: 30 },
+    { desde: 80605, hasta: 107199, impuesto: 14648, exceso: 35 },
+    { desde: 107199, hasta: Infinity, impuesto: 23956, exceso: 37 },
+];
+function ecuadorCalcularIR(baseAnual) {
+    for (const tramo of ECUADOR_IR_TABLA) {
+        if (baseAnual > tramo.desde && baseAnual <= tramo.hasta) {
+            const excedente = baseAnual - tramo.desde;
+            return Math.round((tramo.impuesto + excedente * tramo.exceso / 100) / 12);
+        }
+    }
+    return 0;
+}
+function ecuadorCalcularSueldoLiquido(bruto, diasMes = 30, diasTrabajados = 30, fondosReserva = true, // Mensualizado o acumulado
+bonosNoGravables = 0) {
+    // Proporcional por días trabajados
+    const brutoBase = bruto;
+    const brutoProporcional = Math.round(bruto * diasTrabajados / diasMes);
+    // IESS personal (9.45%)
+    const iessPersonal = Math.round(brutoProporcional * 9.45 / 100);
+    // Impuesto a la Renta (proyección anual)
+    const proyeccionAnual = brutoProporcional * 12;
+    const impuestoRenta = ecuadorCalcularIR(proyeccionAnual);
+    // Fondos de reserva (8.33% mensualizado si aplica)
+    const fondosReservaMonto = fondosReserva ? Math.round(brutoProporcional * 8.33 / 100) : 0;
+    const totalDescuentos = iessPersonal + impuestoRenta;
+    // Líquido final (fondos de reserva suman si se pagan mensual)
+    const liquido = brutoProporcional - totalDescuentos + (fondosReserva ? fondosReservaMonto : 0) + bonosNoGravables;
     return {
         pais: 'Ecuador',
-        sueldoBruto: bruto,
+        sueldoBrutoBase: brutoBase,
+        diasMes,
+        diasTrabajados,
+        sueldoBrutoProporcional: brutoProporcional,
         descuentos: {
-            iess: { porcentaje: 9.45, monto: iess },
-            total: iess,
+            iessPersonal: { porcentaje: 9.45, monto: iessPersonal },
+            impuestoRenta: { proyeccionAnual, montoMensual: impuestoRenta },
+            total: totalDescuentos,
         },
+        fondosReserva: {
+            mensualizado: fondosReserva,
+            porcentaje: 8.33,
+            monto: fondosReservaMonto,
+            nota: fondosReserva ? 'Pagados mensualmente' : 'Acumulados en IESS',
+        },
+        bonosNoGravables,
         sueldoLiquido: liquido,
-        nota: 'Empleador aporta 11.15% adicional',
+        sbu2024: ECUADOR_SBU,
     };
 }
-function ecuadorCalcularBrutoDesdeLiquido(liquidoDeseado) {
-    // Descuento IESS: 9.45%
-    const bruto = Math.round(liquidoDeseado / (1 - 0.0945));
-    const iess = Math.round(bruto * 9.45 / 100);
-    const liquidoReal = bruto - iess;
+function ecuadorCalcularBrutoDesdeLiquido(liquidoDeseado, diasMes = 30, diasTrabajados = 30, fondosReserva = true, bonosNoGravables = 0) {
+    // Aproximación iterativa
+    let bruto = liquidoDeseado * 1.12;
+    for (let i = 0; i < 15; i++) {
+        const resultado = ecuadorCalcularSueldoLiquido(bruto, diasMes, diasTrabajados, fondosReserva, bonosNoGravables);
+        const diferencia = liquidoDeseado - resultado.sueldoLiquido;
+        bruto = bruto + diferencia;
+    }
+    const brutoProporcional = Math.round(bruto);
+    // Bruto base (mes completo)
+    const brutoBase = Math.round(brutoProporcional * diasMes / diasTrabajados);
+    // Calcular resultado final
+    const final = ecuadorCalcularSueldoLiquido(brutoProporcional, diasMes, diasTrabajados, fondosReserva, bonosNoGravables);
+    // Costo empresa
+    const iessPatronal = Math.round(brutoProporcional * 11.15 / 100);
+    const fondosReservaPatronal = !fondosReserva ? Math.round(brutoProporcional * 8.33 / 100) : 0;
+    const costoEmpresa = brutoProporcional + iessPatronal + fondosReservaPatronal + bonosNoGravables;
     return {
         pais: 'Ecuador',
         liquidoDeseado,
-        sueldoBrutoNecesario: bruto,
-        descuentos: {
-            iess: { porcentaje: 9.45, monto: iess },
-            total: iess,
+        diasMes,
+        diasTrabajados,
+        sueldoBrutoBase: brutoBase,
+        sueldoBrutoProporcional: brutoProporcional,
+        descuentos: final.descuentos,
+        fondosReserva: final.fondosReserva,
+        bonosNoGravables,
+        liquidoResultante: final.sueldoLiquido,
+        costoEmpresa: {
+            bruto: brutoProporcional,
+            iessPatronal1115: iessPatronal,
+            fondosReserva: fondosReservaPatronal,
+            bonos: bonosNoGravables,
+            total: costoEmpresa,
+            nota: 'IESS patronal 11.15% + fondos reserva si acumulados',
         },
-        liquidoResultante: liquidoReal,
-        costoEmpresa: Math.round(bruto * 1.1115), // +11.15% IESS patronal
-        nota: 'Costo empresa incluye 11.15% IESS patronal',
     };
 }
 function ecuadorCalcularDecimoTercero(sueldoMensual, mesesTrabajados = 12) {
@@ -656,51 +1211,131 @@ function ecuadorCalcularLiquidacion(sueldoMensual, anosAntiguedad, mesesUltimoAn
         totalLiquidacion: total,
     };
 }
-// ==================== ESPAÑA ====================
-function espanaCalcularSueldoLiquido(bruto, irpfPct = 15) {
-    const ss = Math.round(bruto * 6.35 / 100);
-    const desempleo = Math.round(bruto * 1.55 / 100);
-    const formacion = Math.round(bruto * 0.10 / 100);
-    const irpf = Math.round(bruto * irpfPct / 100);
-    const totalDescuentos = ss + desempleo + formacion + irpf;
-    const liquido = bruto - totalDescuentos;
+// ==================== ESPAÑA - VALORES REALES 2024 ====================
+// SMI 2024 (14 pagas)
+const ESPANA_SMI_MENSUAL = 1134;
+const ESPANA_SMI_ANUAL = 15876;
+// Bases cotización SS 2024
+const ESPANA_BASE_MINIMA = 1323;
+const ESPANA_BASE_MAXIMA = 4720.50;
+// Tabla IRPF 2024 (estatal + autonómica promedio)
+const ESPANA_IRPF_TABLA = [
+    { desde: 0, hasta: 12450, tipo: 19 },
+    { desde: 12450, hasta: 20200, tipo: 24 },
+    { desde: 20200, hasta: 35200, tipo: 30 },
+    { desde: 35200, hasta: 60000, tipo: 37 },
+    { desde: 60000, hasta: 300000, tipo: 45 },
+    { desde: 300000, hasta: Infinity, tipo: 47 },
+];
+function espanaCalcularIRPF(baseAnual) {
+    let impuesto = 0;
+    let baseRestante = baseAnual;
+    for (let i = 0; i < ESPANA_IRPF_TABLA.length && baseRestante > 0; i++) {
+        const tramo = ESPANA_IRPF_TABLA[i];
+        const anterior = i > 0 ? ESPANA_IRPF_TABLA[i - 1].hasta : 0;
+        const anchoTramo = tramo.hasta - anterior;
+        const baseEnTramo = Math.min(baseRestante, anchoTramo);
+        impuesto += baseEnTramo * tramo.tipo / 100;
+        baseRestante -= baseEnTramo;
+    }
+    const tipoMedio = baseAnual > 0 ? Math.round(impuesto / baseAnual * 10000) / 100 : 0;
+    return { tipoMedio, retencionAnual: Math.round(impuesto) };
+}
+function espanaCalcularSueldoLiquido(bruto, pagas = 12, // 12 o 14 pagas
+diasMes = 30, diasTrabajados = 30, tieneHijos = false, numHijos = 0, ticketRestaurante = 0, otrosBeneficios = 0) {
+    // Proporcional por días trabajados
+    const brutoBase = bruto;
+    const brutoProporcional = Math.round(bruto * diasTrabajados / diasMes * 100) / 100;
+    // Base cotización (con topes)
+    const baseCotizacion = Math.min(Math.max(brutoProporcional, ESPANA_BASE_MINIMA), ESPANA_BASE_MAXIMA);
+    // Cotizaciones trabajador
+    const contingenciasComunes = Math.round(baseCotizacion * 4.70 / 100 * 100) / 100;
+    const desempleo = Math.round(baseCotizacion * 1.55 / 100 * 100) / 100;
+    const formacion = Math.round(baseCotizacion * 0.10 / 100 * 100) / 100;
+    const totalSS = contingenciasComunes + desempleo + formacion;
+    // IRPF (proyección anual)
+    const brutoAnual = brutoProporcional * pagas;
+    const reduccionHijos = tieneHijos ? (numHijos * 2400) : 0; // Mínimo por descendiente aprox
+    const baseIRPF = Math.max(0, brutoAnual - reduccionHijos);
+    const { tipoMedio, retencionAnual } = espanaCalcularIRPF(baseIRPF);
+    const irpfMensual = Math.round(retencionAnual / pagas * 100) / 100;
+    const totalDescuentos = Math.round((totalSS + irpfMensual) * 100) / 100;
+    // Beneficios exentos
+    const totalBeneficios = ticketRestaurante + otrosBeneficios;
+    // Líquido final
+    const liquido = Math.round((brutoProporcional - totalDescuentos + totalBeneficios) * 100) / 100;
     return {
         pais: 'España',
-        sueldoBruto: bruto,
-        descuentos: {
-            seguridadSocial: { porcentaje: 6.35, monto: ss },
+        sueldoBrutoBase: brutoBase,
+        pagas,
+        diasMes,
+        diasTrabajados,
+        sueldoBrutoProporcional: brutoProporcional,
+        cotizacionesSS: {
+            baseCotizacion,
+            contingenciasComunes: { porcentaje: 4.70, monto: contingenciasComunes },
             desempleo: { porcentaje: 1.55, monto: desempleo },
             formacion: { porcentaje: 0.10, monto: formacion },
-            irpf: { porcentaje: irpfPct, monto: irpf },
+            total: totalSS,
+        },
+        irpf: {
+            baseAnual: baseIRPF,
+            tipoMedio,
+            retencionMensual: irpfMensual,
+        },
+        descuentos: {
+            seguridadSocial: totalSS,
+            irpf: irpfMensual,
             total: totalDescuentos,
         },
+        beneficios: {
+            ticketRestaurante,
+            otros: otrosBeneficios,
+            total: totalBeneficios,
+        },
         sueldoLiquido: liquido,
+        smi2024: ESPANA_SMI_MENSUAL,
     };
 }
-function espanaCalcularBrutoDesdeLiquido(liquidoDeseado, irpfPct = 15) {
-    // Descuentos: SS 6.35% + Desempleo 1.55% + Formación 0.10% + IRPF variable
-    const totalPct = (6.35 + 1.55 + 0.10 + irpfPct) / 100;
-    const bruto = Math.round(liquidoDeseado / (1 - totalPct));
-    const ss = Math.round(bruto * 6.35 / 100);
-    const desempleo = Math.round(bruto * 1.55 / 100);
-    const formacion = Math.round(bruto * 0.10 / 100);
-    const irpf = Math.round(bruto * irpfPct / 100);
-    const totalDescuentos = ss + desempleo + formacion + irpf;
-    const liquidoReal = bruto - totalDescuentos;
+function espanaCalcularBrutoDesdeLiquido(liquidoDeseado, pagas = 12, diasMes = 30, diasTrabajados = 30, tieneHijos = false, numHijos = 0, ticketRestaurante = 0, otrosBeneficios = 0) {
+    // Beneficios
+    const totalBeneficios = ticketRestaurante + otrosBeneficios;
+    const liquidoSinBeneficios = liquidoDeseado - totalBeneficios;
+    // Aproximación iterativa
+    let bruto = liquidoSinBeneficios * 1.35;
+    for (let i = 0; i < 15; i++) {
+        const resultado = espanaCalcularSueldoLiquido(bruto, pagas, diasMes, diasTrabajados, tieneHijos, numHijos, 0, 0);
+        const diferencia = liquidoSinBeneficios - resultado.sueldoLiquido;
+        bruto = bruto + diferencia;
+    }
+    const brutoProporcional = Math.round(bruto * 100) / 100;
+    // Bruto base (mes completo)
+    const brutoBase = Math.round(brutoProporcional * diasMes / diasTrabajados * 100) / 100;
+    // Calcular resultado final
+    const final = espanaCalcularSueldoLiquido(brutoProporcional, pagas, diasMes, diasTrabajados, tieneHijos, numHijos, ticketRestaurante, otrosBeneficios);
+    // Costo empresa (SS empresa ~30%)
+    const ssEmpresa = Math.round(brutoProporcional * 30 / 100);
+    const costoEmpresa = brutoProporcional + ssEmpresa + totalBeneficios;
     return {
         pais: 'España',
         liquidoDeseado,
-        sueldoBrutoNecesario: bruto,
-        descuentos: {
-            seguridadSocial: { porcentaje: 6.35, monto: ss },
-            desempleo: { porcentaje: 1.55, monto: desempleo },
-            formacion: { porcentaje: 0.10, monto: formacion },
-            irpf: { porcentaje: irpfPct, monto: irpf },
-            total: totalDescuentos,
+        pagas,
+        diasMes,
+        diasTrabajados,
+        sueldoBrutoBase: brutoBase,
+        sueldoBrutoProporcional: brutoProporcional,
+        cotizacionesSS: final.cotizacionesSS,
+        irpf: final.irpf,
+        descuentos: final.descuentos,
+        beneficios: final.beneficios,
+        liquidoResultante: final.sueldoLiquido,
+        costoEmpresa: {
+            bruto: brutoProporcional,
+            ssEmpresa30: ssEmpresa,
+            beneficios: totalBeneficios,
+            total: Math.round(costoEmpresa),
+            nota: 'SS empresa ~30% (contingencias, AT/EP, desempleo, FOGASA, FP)',
         },
-        liquidoResultante: liquidoReal,
-        costoEmpresa: Math.round(bruto * 1.30), // ~30% cargas sociales empresa
-        nota: 'Costo empresa incluye ~30% Seguridad Social empresa',
     };
 }
 function espanaCalcularVacaciones(sueldoAnual, diasPendientes) {
@@ -996,22 +1631,310 @@ class LatamPayroll {
                         },
                     },
                 },
-                // Chile específico
+                // Chile específico - AFP Real
                 {
-                    displayName: 'AFP (%)',
-                    name: 'afpPct',
-                    type: 'number',
-                    default: 10.77,
-                    displayOptions: { show: { pais: ['chile'], operation: ['sueldo_liquido'] } },
+                    displayName: 'AFP',
+                    name: 'afpChile',
+                    type: 'options',
+                    noDataExpression: true,
+                    options: [
+                        { name: 'AFP Modelo (10.58%)', value: 'modelo' },
+                        { name: 'AFP Uno (10.49%)', value: 'uno' },
+                        { name: 'AFP Habitat (11.27%)', value: 'habitat' },
+                        { name: 'AFP PlanVital (11.16%)', value: 'planvital' },
+                        { name: 'AFP Capital (11.44%)', value: 'capital' },
+                        { name: 'AFP Cuprum (11.44%)', value: 'cuprum' },
+                        { name: 'AFP ProVida (11.45%)', value: 'provida' },
+                    ],
+                    default: 'modelo',
+                    description: 'AFP del trabajador (incluye cotización 10% + SIS 1.49% + comisión)',
+                    displayOptions: { show: { pais: ['chile'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
                 },
                 {
                     displayName: 'Salud (%)',
                     name: 'saludPct',
                     type: 'number',
                     default: 7,
-                    displayOptions: { show: { pais: ['chile'], operation: ['sueldo_liquido'] } },
+                    description: 'Fonasa 7% o Isapre (puede ser mayor)',
+                    displayOptions: { show: { pais: ['chile'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Días del Mes',
+                    name: 'diasMes',
+                    type: 'number',
+                    default: 30,
+                    description: 'Días totales del mes',
+                    displayOptions: { show: { pais: ['chile'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Días Trabajados',
+                    name: 'diasTrabajadosChile',
+                    type: 'number',
+                    default: 30,
+                    description: 'Días efectivamente trabajados (para cálculo proporcional)',
+                    displayOptions: { show: { pais: ['chile'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Bono Colación',
+                    name: 'bonoColacion',
+                    type: 'number',
+                    default: 0,
+                    description: 'Bono colación (no imponible)',
+                    displayOptions: { show: { pais: ['chile'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Bono Movilización',
+                    name: 'bonoMovilizacion',
+                    type: 'number',
+                    default: 0,
+                    description: 'Bono movilización (no imponible)',
+                    displayOptions: { show: { pais: ['chile'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Otros Bonos No Imponibles',
+                    name: 'otrosBonos',
+                    type: 'number',
+                    default: 0,
+                    description: 'Otros bonos no imponibles',
+                    displayOptions: { show: { pais: ['chile'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                // México específico
+                {
+                    displayName: 'Zona Frontera Norte',
+                    name: 'zonaFrontera',
+                    type: 'boolean',
+                    default: false,
+                    description: 'Activar si el trabajador está en zona frontera norte (salario mínimo mayor)',
+                    displayOptions: { show: { pais: ['mexico'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Días del Mes',
+                    name: 'diasMesMexico',
+                    type: 'number',
+                    default: 30,
+                    description: 'Días totales del mes',
+                    displayOptions: { show: { pais: ['mexico'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Días Trabajados',
+                    name: 'diasTrabajadosMexico',
+                    type: 'number',
+                    default: 30,
+                    description: 'Días efectivamente trabajados (para cálculo proporcional)',
+                    displayOptions: { show: { pais: ['mexico'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Vales de Despensa',
+                    name: 'valesDespensa',
+                    type: 'number',
+                    default: 0,
+                    description: 'Vales de despensa (exento hasta 40% UMA)',
+                    displayOptions: { show: { pais: ['mexico'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Ayuda Transporte',
+                    name: 'ayudaTransporte',
+                    type: 'number',
+                    default: 0,
+                    description: 'Ayuda para transporte (no gravable)',
+                    displayOptions: { show: { pais: ['mexico'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Otros Bonos No Gravables',
+                    name: 'otrosBonosMexico',
+                    type: 'number',
+                    default: 0,
+                    description: 'Otros bonos no gravables',
+                    displayOptions: { show: { pais: ['mexico'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                // Argentina específico
+                {
+                    displayName: 'Obra Social (%)',
+                    name: 'obraSocialPct',
+                    type: 'number',
+                    default: 3,
+                    description: 'Porcentaje obra social (varía según convenio)',
+                    displayOptions: { show: { pais: ['argentina'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Sindicato (%)',
+                    name: 'sindicatoPct',
+                    type: 'number',
+                    default: 2,
+                    description: 'Cuota sindical (0 si no está afiliado)',
+                    displayOptions: { show: { pais: ['argentina'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Días del Mes',
+                    name: 'diasMesArgentina',
+                    type: 'number',
+                    default: 30,
+                    description: 'Días totales del mes',
+                    displayOptions: { show: { pais: ['argentina'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Días Trabajados',
+                    name: 'diasTrabajadosArgentina',
+                    type: 'number',
+                    default: 30,
+                    description: 'Días efectivamente trabajados',
+                    displayOptions: { show: { pais: ['argentina'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Bono No Remunerativo',
+                    name: 'bonoNoRemunerativo',
+                    type: 'number',
+                    default: 0,
+                    description: 'Bonos no remunerativos (no aportan a jubilación)',
+                    displayOptions: { show: { pais: ['argentina'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Tiene Hijos a Cargo',
+                    name: 'tieneHijosArg',
+                    type: 'boolean',
+                    default: false,
+                    description: 'Para deducción de Ganancias',
+                    displayOptions: { show: { pais: ['argentina'], operation: ['sueldo_liquido'] } },
+                },
+                {
+                    displayName: 'Cantidad de Hijos',
+                    name: 'cantidadHijosArg',
+                    type: 'number',
+                    default: 0,
+                    description: 'Cantidad de hijos para deducción',
+                    displayOptions: { show: { pais: ['argentina'], operation: ['sueldo_liquido'] } },
+                },
+                // Colombia específico
+                {
+                    displayName: 'Días del Mes',
+                    name: 'diasMesColombia',
+                    type: 'number',
+                    default: 30,
+                    description: 'Días totales del mes',
+                    displayOptions: { show: { pais: ['colombia'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Días Trabajados',
+                    name: 'diasTrabajadosColombia',
+                    type: 'number',
+                    default: 30,
+                    description: 'Días efectivamente trabajados',
+                    displayOptions: { show: { pais: ['colombia'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Incluir Auxilio de Transporte',
+                    name: 'incluyeAuxilioTransporte',
+                    type: 'boolean',
+                    default: true,
+                    description: 'Auxilio de transporte ($162,000 si salario <= 2 SMMLV)',
+                    displayOptions: { show: { pais: ['colombia'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Bonos No Salariales',
+                    name: 'bonosNoSalariales',
+                    type: 'number',
+                    default: 0,
+                    description: 'Bonos que no constituyen salario (ej: bonificaciones ocasionales)',
+                    displayOptions: { show: { pais: ['colombia'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                // Perú específico
+                {
+                    displayName: 'Sistema de Pensiones',
+                    name: 'sistemaPension',
+                    type: 'options',
+                    noDataExpression: true,
+                    options: [
+                        { name: 'AFP Habitat (1.47% comisión)', value: 'habitat' },
+                        { name: 'AFP Integra (1.55% comisión)', value: 'integra' },
+                        { name: 'AFP Prima (1.60% comisión)', value: 'prima' },
+                        { name: 'AFP Profuturo (1.69% comisión)', value: 'profuturo' },
+                        { name: 'ONP - Sistema Nacional (13%)', value: 'onp' },
+                    ],
+                    default: 'habitat',
+                    description: 'AFP privada o ONP (sistema público)',
+                    displayOptions: { show: { pais: ['peru'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Días del Mes',
+                    name: 'diasMesPeru',
+                    type: 'number',
+                    default: 30,
+                    description: 'Días totales del mes',
+                    displayOptions: { show: { pais: ['peru'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Días Trabajados',
+                    name: 'diasTrabajadosPeru',
+                    type: 'number',
+                    default: 30,
+                    description: 'Días efectivamente trabajados',
+                    displayOptions: { show: { pais: ['peru'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Asignación Familiar',
+                    name: 'asignacionFamiliar',
+                    type: 'boolean',
+                    default: false,
+                    description: 'Aplica 10% de RMV adicional si tiene hijos menores',
+                    displayOptions: { show: { pais: ['peru'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Bonos No Afectos',
+                    name: 'bonosNoAfectos',
+                    type: 'number',
+                    default: 0,
+                    description: 'Bonos no afectos a aportes (ej: movilidad, alimentación)',
+                    displayOptions: { show: { pais: ['peru'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
                 },
                 // Brasil específico
+                {
+                    displayName: 'Dias do Mês',
+                    name: 'diasMesBrasil',
+                    type: 'number',
+                    default: 30,
+                    description: 'Dias totais do mês',
+                    displayOptions: { show: { pais: ['brasil'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Dias Trabalhados',
+                    name: 'diasTrabalhadosBrasil',
+                    type: 'number',
+                    default: 30,
+                    description: 'Dias efetivamente trabalhados',
+                    displayOptions: { show: { pais: ['brasil'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Dependentes',
+                    name: 'dependentesBrasil',
+                    type: 'number',
+                    default: 0,
+                    description: 'Quantidade de dependentes para dedução IRRF',
+                    displayOptions: { show: { pais: ['brasil'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Opta por Vale Transporte',
+                    name: 'valeTransporte',
+                    type: 'boolean',
+                    default: false,
+                    description: 'Desconto de 6% se optar pelo VT',
+                    displayOptions: { show: { pais: ['brasil'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Vale Refeição',
+                    name: 'valeRefeicao',
+                    type: 'number',
+                    default: 0,
+                    description: 'Valor do vale refeição/alimentação',
+                    displayOptions: { show: { pais: ['brasil'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Outros Benefícios',
+                    name: 'outrosBeneficiosBrasil',
+                    type: 'number',
+                    default: 0,
+                    description: 'Outros benefícios não tributados',
+                    displayOptions: { show: { pais: ['brasil'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
                 {
                     displayName: 'Saldo FGTS',
                     name: 'saldoFgts',
@@ -1026,13 +1949,99 @@ class LatamPayroll {
                     default: true,
                     displayOptions: { show: { pais: ['brasil'], operation: ['rescisao'] } },
                 },
+                // Ecuador específico
+                {
+                    displayName: 'Días del Mes',
+                    name: 'diasMesEcuador',
+                    type: 'number',
+                    default: 30,
+                    description: 'Días totales del mes',
+                    displayOptions: { show: { pais: ['ecuador'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Días Trabajados',
+                    name: 'diasTrabajadosEcuador',
+                    type: 'number',
+                    default: 30,
+                    description: 'Días efectivamente trabajados',
+                    displayOptions: { show: { pais: ['ecuador'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Fondos de Reserva Mensualizados',
+                    name: 'fondosReserva',
+                    type: 'boolean',
+                    default: true,
+                    description: 'Si true, fondos de reserva se pagan mensual (8.33%)',
+                    displayOptions: { show: { pais: ['ecuador'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Bonos No Gravables',
+                    name: 'bonosNoGravablesEcuador',
+                    type: 'number',
+                    default: 0,
+                    description: 'Bonos exentos de impuestos',
+                    displayOptions: { show: { pais: ['ecuador'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
                 // España específico
                 {
-                    displayName: 'IRPF (%)',
-                    name: 'irpfPct',
+                    displayName: 'Número de Pagas',
+                    name: 'pagas',
+                    type: 'options',
+                    options: [
+                        { name: '12 pagas', value: 12 },
+                        { name: '14 pagas', value: 14 },
+                    ],
+                    default: 12,
+                    description: 'Número de pagas anuales',
+                    displayOptions: { show: { pais: ['espana'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Días del Mes',
+                    name: 'diasMesEspana',
                     type: 'number',
-                    default: 15,
-                    displayOptions: { show: { pais: ['espana'], operation: ['sueldo_liquido'] } },
+                    default: 30,
+                    description: 'Días totales del mes',
+                    displayOptions: { show: { pais: ['espana'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Días Trabajados',
+                    name: 'diasTrabajadosEspana',
+                    type: 'number',
+                    default: 30,
+                    description: 'Días efectivamente trabajados',
+                    displayOptions: { show: { pais: ['espana'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Tiene Hijos',
+                    name: 'tieneHijosEspana',
+                    type: 'boolean',
+                    default: false,
+                    description: 'Para reducción por mínimo familiar IRPF',
+                    displayOptions: { show: { pais: ['espana'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Número de Hijos',
+                    name: 'numHijosEspana',
+                    type: 'number',
+                    default: 0,
+                    description: 'Cantidad de hijos para deducción IRPF',
+                    displayOptions: { show: { pais: ['espana'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Ticket Restaurante',
+                    name: 'ticketRestaurante',
+                    type: 'number',
+                    default: 0,
+                    description: 'Ticket restaurante mensual (exento hasta 11€/día)',
+                    displayOptions: { show: { pais: ['espana'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
+                },
+                {
+                    displayName: 'Otros Beneficios',
+                    name: 'otrosBeneficiosEspana',
+                    type: 'number',
+                    default: 0,
+                    description: 'Otros beneficios sociales exentos',
+                    displayOptions: { show: { pais: ['espana'], operation: ['sueldo_liquido', 'bruto_liquido'] } },
                 },
                 {
                     displayName: 'Sueldo Anual',
@@ -1060,14 +2069,24 @@ class LatamPayroll {
                 // CHILE
                 if (pais === 'chile') {
                     if (operation === 'bruto_liquido') {
-                        const afpPct = this.getNodeParameter('afpPct', i, 10.77);
+                        const afpChile = this.getNodeParameter('afpChile', i, 'modelo');
                         const saludPct = this.getNodeParameter('saludPct', i, 7);
-                        result = chileCalcularBrutoDesdeLiquido(liquidoDeseado, afpPct, saludPct);
+                        const diasMes = this.getNodeParameter('diasMes', i, 30);
+                        const diasTrabajadosChile = this.getNodeParameter('diasTrabajadosChile', i, 30);
+                        const bonoColacion = this.getNodeParameter('bonoColacion', i, 0);
+                        const bonoMovilizacion = this.getNodeParameter('bonoMovilizacion', i, 0);
+                        const otrosBonos = this.getNodeParameter('otrosBonos', i, 0);
+                        result = chileCalcularBrutoDesdeLiquido(liquidoDeseado, afpChile, saludPct, 0.6, diasMes, diasTrabajadosChile, bonoColacion, bonoMovilizacion, otrosBonos);
                     }
                     else if (operation === 'sueldo_liquido') {
-                        const afpPct = this.getNodeParameter('afpPct', i, 10.77);
+                        const afpChile = this.getNodeParameter('afpChile', i, 'modelo');
                         const saludPct = this.getNodeParameter('saludPct', i, 7);
-                        result = chileCalcularSueldoLiquido(sueldoBruto, afpPct, saludPct);
+                        const diasMes = this.getNodeParameter('diasMes', i, 30);
+                        const diasTrabajadosChile = this.getNodeParameter('diasTrabajadosChile', i, 30);
+                        const bonoColacion = this.getNodeParameter('bonoColacion', i, 0);
+                        const bonoMovilizacion = this.getNodeParameter('bonoMovilizacion', i, 0);
+                        const otrosBonos = this.getNodeParameter('otrosBonos', i, 0);
+                        result = chileCalcularSueldoLiquido(sueldoBruto, afpChile, saludPct, 0.6, diasMes, diasTrabajadosChile, bonoColacion, bonoMovilizacion, otrosBonos);
                     }
                     else if (operation === 'vacaciones') {
                         result = chileCalcularVacaciones(sueldoBruto, diasVacaciones);
@@ -1080,10 +2099,22 @@ class LatamPayroll {
                 // MEXICO
                 else if (pais === 'mexico') {
                     if (operation === 'bruto_liquido') {
-                        result = mexicoCalcularBrutoDesdeLiquido(liquidoDeseado);
+                        const zonaFrontera = this.getNodeParameter('zonaFrontera', i, false);
+                        const diasMesMexico = this.getNodeParameter('diasMesMexico', i, 30);
+                        const diasTrabajadosMexico = this.getNodeParameter('diasTrabajadosMexico', i, 30);
+                        const valesDespensa = this.getNodeParameter('valesDespensa', i, 0);
+                        const ayudaTransporte = this.getNodeParameter('ayudaTransporte', i, 0);
+                        const otrosBonosMexico = this.getNodeParameter('otrosBonosMexico', i, 0);
+                        result = mexicoCalcularBrutoDesdeLiquido(liquidoDeseado, zonaFrontera, diasMesMexico, diasTrabajadosMexico, valesDespensa, ayudaTransporte, otrosBonosMexico);
                     }
                     else if (operation === 'sueldo_liquido') {
-                        result = mexicoCalcularSueldoLiquido(sueldoBruto);
+                        const zonaFrontera = this.getNodeParameter('zonaFrontera', i, false);
+                        const diasMesMexico = this.getNodeParameter('diasMesMexico', i, 30);
+                        const diasTrabajadosMexico = this.getNodeParameter('diasTrabajadosMexico', i, 30);
+                        const valesDespensa = this.getNodeParameter('valesDespensa', i, 0);
+                        const ayudaTransporte = this.getNodeParameter('ayudaTransporte', i, 0);
+                        const otrosBonosMexico = this.getNodeParameter('otrosBonosMexico', i, 0);
+                        result = mexicoCalcularSueldoLiquido(sueldoBruto, zonaFrontera, diasMesMexico, diasTrabajadosMexico, valesDespensa, ayudaTransporte, otrosBonosMexico);
                     }
                     else if (operation === 'vacaciones') {
                         result = mexicoCalcularVacaciones(sueldoBruto, anosAntiguedad);
@@ -1098,10 +2129,22 @@ class LatamPayroll {
                 // ARGENTINA
                 else if (pais === 'argentina') {
                     if (operation === 'bruto_liquido') {
-                        result = argentinaCalcularBrutoDesdeLiquido(liquidoDeseado);
+                        const obraSocialPct = this.getNodeParameter('obraSocialPct', i, 3);
+                        const sindicatoPct = this.getNodeParameter('sindicatoPct', i, 2);
+                        const diasMesArgentina = this.getNodeParameter('diasMesArgentina', i, 30);
+                        const diasTrabajadosArgentina = this.getNodeParameter('diasTrabajadosArgentina', i, 30);
+                        const bonoNoRemunerativo = this.getNodeParameter('bonoNoRemunerativo', i, 0);
+                        result = argentinaCalcularBrutoDesdeLiquido(liquidoDeseado, obraSocialPct, sindicatoPct, diasMesArgentina, diasTrabajadosArgentina, bonoNoRemunerativo);
                     }
                     else if (operation === 'sueldo_liquido') {
-                        result = argentinaCalcularSueldoLiquido(sueldoBruto);
+                        const obraSocialPct = this.getNodeParameter('obraSocialPct', i, 3);
+                        const sindicatoPct = this.getNodeParameter('sindicatoPct', i, 2);
+                        const diasMesArgentina = this.getNodeParameter('diasMesArgentina', i, 30);
+                        const diasTrabajadosArgentina = this.getNodeParameter('diasTrabajadosArgentina', i, 30);
+                        const bonoNoRemunerativo = this.getNodeParameter('bonoNoRemunerativo', i, 0);
+                        const tieneHijosArg = this.getNodeParameter('tieneHijosArg', i, false);
+                        const cantidadHijosArg = this.getNodeParameter('cantidadHijosArg', i, 0);
+                        result = argentinaCalcularSueldoLiquido(sueldoBruto, obraSocialPct, sindicatoPct, diasMesArgentina, diasTrabajadosArgentina, bonoNoRemunerativo, tieneHijosArg, cantidadHijosArg);
                     }
                     else if (operation === 'vacaciones') {
                         result = argentinaCalcularVacaciones(sueldoBruto, anosAntiguedad);
@@ -1116,10 +2159,18 @@ class LatamPayroll {
                 // COLOMBIA
                 else if (pais === 'colombia') {
                     if (operation === 'bruto_liquido') {
-                        result = colombiaCalcularBrutoDesdeLiquido(liquidoDeseado);
+                        const diasMesColombia = this.getNodeParameter('diasMesColombia', i, 30);
+                        const diasTrabajadosColombia = this.getNodeParameter('diasTrabajadosColombia', i, 30);
+                        const incluyeAuxilioTransporte = this.getNodeParameter('incluyeAuxilioTransporte', i, true);
+                        const bonosNoSalariales = this.getNodeParameter('bonosNoSalariales', i, 0);
+                        result = colombiaCalcularBrutoDesdeLiquido(liquidoDeseado, diasMesColombia, diasTrabajadosColombia, incluyeAuxilioTransporte, bonosNoSalariales);
                     }
                     else if (operation === 'sueldo_liquido') {
-                        result = colombiaCalcularSueldoLiquido(sueldoBruto);
+                        const diasMesColombia = this.getNodeParameter('diasMesColombia', i, 30);
+                        const diasTrabajadosColombia = this.getNodeParameter('diasTrabajadosColombia', i, 30);
+                        const incluyeAuxilioTransporte = this.getNodeParameter('incluyeAuxilioTransporte', i, true);
+                        const bonosNoSalariales = this.getNodeParameter('bonosNoSalariales', i, 0);
+                        result = colombiaCalcularSueldoLiquido(sueldoBruto, diasMesColombia, diasTrabajadosColombia, incluyeAuxilioTransporte, bonosNoSalariales);
                     }
                     else if (operation === 'prima') {
                         result = colombiaCalcularPrima(sueldoBruto, mesesTrabajados);
@@ -1136,10 +2187,20 @@ class LatamPayroll {
                 // PERU
                 else if (pais === 'peru') {
                     if (operation === 'bruto_liquido') {
-                        result = peruCalcularBrutoDesdeLiquido(liquidoDeseado);
+                        const sistemaPension = this.getNodeParameter('sistemaPension', i, 'habitat');
+                        const diasMesPeru = this.getNodeParameter('diasMesPeru', i, 30);
+                        const diasTrabajadosPeru = this.getNodeParameter('diasTrabajadosPeru', i, 30);
+                        const asignacionFamiliar = this.getNodeParameter('asignacionFamiliar', i, false);
+                        const bonosNoAfectos = this.getNodeParameter('bonosNoAfectos', i, 0);
+                        result = peruCalcularBrutoDesdeLiquido(liquidoDeseado, sistemaPension, diasMesPeru, diasTrabajadosPeru, asignacionFamiliar, bonosNoAfectos);
                     }
                     else if (operation === 'sueldo_liquido') {
-                        result = peruCalcularSueldoLiquido(sueldoBruto);
+                        const sistemaPension = this.getNodeParameter('sistemaPension', i, 'habitat');
+                        const diasMesPeru = this.getNodeParameter('diasMesPeru', i, 30);
+                        const diasTrabajadosPeru = this.getNodeParameter('diasTrabajadosPeru', i, 30);
+                        const asignacionFamiliar = this.getNodeParameter('asignacionFamiliar', i, false);
+                        const bonosNoAfectos = this.getNodeParameter('bonosNoAfectos', i, 0);
+                        result = peruCalcularSueldoLiquido(sueldoBruto, sistemaPension, diasMesPeru, diasTrabajadosPeru, asignacionFamiliar, bonosNoAfectos);
                     }
                     else if (operation === 'gratificacion') {
                         result = peruCalcularGratificacion(sueldoBruto, mesesTrabajados);
@@ -1154,10 +2215,22 @@ class LatamPayroll {
                 // BRASIL
                 else if (pais === 'brasil') {
                     if (operation === 'bruto_liquido') {
-                        result = brasilCalcularBrutoDesdeLiquido(liquidoDeseado);
+                        const diasMesBrasil = this.getNodeParameter('diasMesBrasil', i, 30);
+                        const diasTrabalhadosBrasil = this.getNodeParameter('diasTrabalhadosBrasil', i, 30);
+                        const dependentesBrasil = this.getNodeParameter('dependentesBrasil', i, 0);
+                        const valeTransporte = this.getNodeParameter('valeTransporte', i, false);
+                        const valeRefeicao = this.getNodeParameter('valeRefeicao', i, 0);
+                        const outrosBeneficiosBrasil = this.getNodeParameter('outrosBeneficiosBrasil', i, 0);
+                        result = brasilCalcularBrutoDesdeLiquido(liquidoDeseado, diasMesBrasil, diasTrabalhadosBrasil, dependentesBrasil, valeTransporte, valeRefeicao, outrosBeneficiosBrasil);
                     }
                     else if (operation === 'sueldo_liquido') {
-                        result = brasilCalcularSueldoLiquido(sueldoBruto);
+                        const diasMesBrasil = this.getNodeParameter('diasMesBrasil', i, 30);
+                        const diasTrabalhadosBrasil = this.getNodeParameter('diasTrabalhadosBrasil', i, 30);
+                        const dependentesBrasil = this.getNodeParameter('dependentesBrasil', i, 0);
+                        const valeTransporte = this.getNodeParameter('valeTransporte', i, false);
+                        const valeRefeicao = this.getNodeParameter('valeRefeicao', i, 0);
+                        const outrosBeneficiosBrasil = this.getNodeParameter('outrosBeneficiosBrasil', i, 0);
+                        result = brasilCalcularSueldoLiquido(sueldoBruto, diasMesBrasil, diasTrabalhadosBrasil, dependentesBrasil, valeTransporte, valeRefeicao, outrosBeneficiosBrasil);
                     }
                     else if (operation === 'ferias') {
                         result = brasilCalcularFerias(sueldoBruto);
@@ -1174,10 +2247,18 @@ class LatamPayroll {
                 // ECUADOR
                 else if (pais === 'ecuador') {
                     if (operation === 'bruto_liquido') {
-                        result = ecuadorCalcularBrutoDesdeLiquido(liquidoDeseado);
+                        const diasMesEcuador = this.getNodeParameter('diasMesEcuador', i, 30);
+                        const diasTrabajadosEcuador = this.getNodeParameter('diasTrabajadosEcuador', i, 30);
+                        const fondosReserva = this.getNodeParameter('fondosReserva', i, true);
+                        const bonosNoGravablesEcuador = this.getNodeParameter('bonosNoGravablesEcuador', i, 0);
+                        result = ecuadorCalcularBrutoDesdeLiquido(liquidoDeseado, diasMesEcuador, diasTrabajadosEcuador, fondosReserva, bonosNoGravablesEcuador);
                     }
                     else if (operation === 'sueldo_liquido') {
-                        result = ecuadorCalcularSueldoLiquido(sueldoBruto);
+                        const diasMesEcuador = this.getNodeParameter('diasMesEcuador', i, 30);
+                        const diasTrabajadosEcuador = this.getNodeParameter('diasTrabajadosEcuador', i, 30);
+                        const fondosReserva = this.getNodeParameter('fondosReserva', i, true);
+                        const bonosNoGravablesEcuador = this.getNodeParameter('bonosNoGravablesEcuador', i, 0);
+                        result = ecuadorCalcularSueldoLiquido(sueldoBruto, diasMesEcuador, diasTrabajadosEcuador, fondosReserva, bonosNoGravablesEcuador);
                     }
                     else if (operation === 'decimo_tercero') {
                         result = ecuadorCalcularDecimoTercero(sueldoBruto, mesesTrabajados);
@@ -1192,12 +2273,24 @@ class LatamPayroll {
                 // ESPAÑA
                 else if (pais === 'espana') {
                     if (operation === 'bruto_liquido') {
-                        const irpfPct = this.getNodeParameter('irpfPct', i, 15);
-                        result = espanaCalcularBrutoDesdeLiquido(liquidoDeseado, irpfPct);
+                        const pagas = this.getNodeParameter('pagas', i, 12);
+                        const diasMesEspana = this.getNodeParameter('diasMesEspana', i, 30);
+                        const diasTrabajadosEspana = this.getNodeParameter('diasTrabajadosEspana', i, 30);
+                        const tieneHijosEspana = this.getNodeParameter('tieneHijosEspana', i, false);
+                        const numHijosEspana = this.getNodeParameter('numHijosEspana', i, 0);
+                        const ticketRestaurante = this.getNodeParameter('ticketRestaurante', i, 0);
+                        const otrosBeneficiosEspana = this.getNodeParameter('otrosBeneficiosEspana', i, 0);
+                        result = espanaCalcularBrutoDesdeLiquido(liquidoDeseado, pagas, diasMesEspana, diasTrabajadosEspana, tieneHijosEspana, numHijosEspana, ticketRestaurante, otrosBeneficiosEspana);
                     }
                     else if (operation === 'sueldo_liquido') {
-                        const irpfPct = this.getNodeParameter('irpfPct', i, 15);
-                        result = espanaCalcularSueldoLiquido(sueldoBruto, irpfPct);
+                        const pagas = this.getNodeParameter('pagas', i, 12);
+                        const diasMesEspana = this.getNodeParameter('diasMesEspana', i, 30);
+                        const diasTrabajadosEspana = this.getNodeParameter('diasTrabajadosEspana', i, 30);
+                        const tieneHijosEspana = this.getNodeParameter('tieneHijosEspana', i, false);
+                        const numHijosEspana = this.getNodeParameter('numHijosEspana', i, 0);
+                        const ticketRestaurante = this.getNodeParameter('ticketRestaurante', i, 0);
+                        const otrosBeneficiosEspana = this.getNodeParameter('otrosBeneficiosEspana', i, 0);
+                        result = espanaCalcularSueldoLiquido(sueldoBruto, pagas, diasMesEspana, diasTrabajadosEspana, tieneHijosEspana, numHijosEspana, ticketRestaurante, otrosBeneficiosEspana);
                     }
                     else if (operation === 'vacaciones') {
                         const sueldoAnual = this.getNodeParameter('sueldoAnual', i, 0);
